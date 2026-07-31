@@ -5,7 +5,7 @@ import AnalysisTab from './components/AnalysisTab.vue'
 import Timeline from './components/Timeline.vue'
 import WeekNav from './components/WeekNav.vue'
 import SettingsPage from './components/SettingsPage.vue'
-import { getTimeline, getLimits, eventDuration, type LogEntry } from './lib/dbus'
+import { getTimeline, getLimits, eventDuration, categoryLabel, type LogEntry } from './lib/dbus'
 import { startOfDay, daysOfWeek, dayRange } from './lib/dates'
 
 const view = ref<'dashboard' | 'settings'>('dashboard')
@@ -41,7 +41,7 @@ const overSet = ref(new Map<string, string>()) // key "kind:target" -> رسال�
 let lastNotified = new Map<string, number>() // key -> epoch of last notification
 
 function evalLabel(target: string, kind: string): string {
-  if (kind === 'category') return target
+  if (kind === 'category') return categoryLabel(target)
   const hit = dayLogs.value.find(l => l.app_name === target)
   return hit?.friendly_name ?? target
 }
