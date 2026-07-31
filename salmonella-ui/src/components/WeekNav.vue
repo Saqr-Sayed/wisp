@@ -14,7 +14,7 @@ const weekLabel = computed(() => {
   return `${a.getDate()} ${MONTHS[a.getMonth()]} – ${b.getDate()} ${MONTHS[b.getMonth()]}`
 })
 
-const today = startOfDay(new Date())
+
 
 function dayLogs(day: Date): LogEntry[] {
   return props.logs.filter(l => startOfDay(new Date(l.start_time * 1000)).getTime() === day.getTime())
@@ -52,7 +52,7 @@ function overPx(over: number, total: number): number {
 const weekTotal = computed(() => dayTotals.value.reduce((s, t) => s + t, 0))
 const selectedTotal = computed(() => props.dayLogs.reduce((s, l) => s + eventDuration(l), 0))
 
-function isToday(d: Date) { return d.getTime() === today.getTime() }
+function isToday(d: Date) { return d.getTime() === startOfDay(new Date()).getTime() }
 function isSelected(d: Date) { return d.getTime() === props.selected.getTime() }
 
 function dayTitle(i: number, day: Date): string {

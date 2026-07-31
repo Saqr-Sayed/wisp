@@ -25,7 +25,8 @@ async function refresh() {
     nowSec.value = Math.floor(Date.now() / 1000)
     const [dFrom, dTo] = dayRange(selectedDay.value)
     dayLogs.value = await getTimeline(dFrom, dTo)
-    const [wFrom, wTo] = dayRange(weekDays.value[6])
+    const [wFrom] = dayRange(weekDays.value[0])
+    const [, wTo] = dayRange(weekDays.value[6])
     weekLogs.value = await getTimeline(wFrom, wTo)
     limits.value = await getLimits()
     evaluateLimits()
@@ -50,7 +51,7 @@ function evaluateLimits() {
   const used = new Map<string, number>()
   for (const l of dayLogs.value) {
     const d = eventDuration(l, nowSec.value)
-    used.set(`category:${l.category}`, (used.get(`category:${l.category}`) ?? 0) + d)
+    used.set(`category:${l.category || 'other'}`, (used.get(`category:${l.category || 'other'}`) ?? 0) + d)
     used.set(`app:${l.app_name}`, (used.get(`app:${l.app_name}`) ?? 0) + d)
   }
   const over = new Map<string, string>()
