@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { getReport, getSeries, formatDuration, categoryLabel, type LogEntry } from '../lib/dbus'
+import { getReport, getSeries, periodRange, formatDuration, categoryLabel, type Period, type LogEntry } from '../lib/dbus'
 
 const props = defineProps<{ logs: LogEntry[]; period: string; offset: number }>()
 const groupBy = ref<'app' | 'category' | 'site' | 'series'>('app')
 const report = ref<[string, number][]>([])
 const series = ref<[string, string, number][]>([])
 
-watch(() => [props.period, props.offset, groupBy.value], async () => {
-  const [from, to] = await import('../lib/dbus').then(m => m.periodRange(props.period as any, props.offset))
+watch(() => [props.period, props.offset, props.logs, groupBy.value], async () => {
+  const [from, to] = periodRange(props.period as Period, props.offset)
   if (groupBy.value === 'series') {
     series.value = await getSeries(from, to)
   } else {

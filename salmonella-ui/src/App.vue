@@ -13,6 +13,7 @@ const tab = ref<'analysis' | 'timeline' | 'limits' | 'settings'>('analysis')
 const period = ref<Period>('day')
 const offset = ref(0)
 const logs = ref<LogEntry[]>([])
+const todayLogs = ref<LogEntry[]>([])
 const limits = ref<[string, string, number][]>([])
 const nowSec = ref(Math.floor(Date.now() / 1000))
 
@@ -20,6 +21,8 @@ async function refresh() {
   nowSec.value = Math.floor(Date.now() / 1000)
   const [from, to] = periodRange(period.value, offset.value)
   logs.value = await getTimeline(from, to)
+  const [tFrom, tTo] = periodRange('day', 0)
+  todayLogs.value = await getTimeline(tFrom, tTo)
   limits.value = await getLimits()
   evaluateLimits()
 }
@@ -29,13 +32,13 @@ let lastNotified = new Map<string, number>() // key -> epoch of last notificatio
 
 function evalLabel(target: string, kind: string): string {
   if (kind === 'category') return categoryLabel(target)
-  const hit = logs.value.find(l => l.app_name === target)
+  const hit = todayLogs.value.find(l => l.app_name === target)
   return hit?.friendly_name ?? target
 }
 
 function evaluateLimits() {
   const used = new Map<string, number>()
-  for (const l of logs.value) {
+  for (const l of todayLogs.value) {
     const d = eventDuration(l, nowSec.value)
     used.set(`category:${l.category}`, (used.get(`category:${l.category}`) ?? 0) + d)
     used.set(`app:${l.app_name}`, (used.get(`app:${l.app_name}`) ?? 0) + d)
@@ -53,8 +56,7 @@ function notify() {
   for (const [key, msg] of overSet.value) {
     const last = lastNotified.get(key) ?? 0
     if (nowMs - last > 10 * 60 * 1000) { // تذكير كل 10 دقائق
-      invoke('notify', { body: msg }).catch(() => {})
-      lastNotified.set(key, nowMs)
+      invoke('notify', { body: msg }).then(() => lastNotified.set(key, nowMs)).catch(() => {})
     }
   }
 }
@@ -100,7 +102,7 @@ const todayLabel = computed(() => {
       <SearchBar />
       <AnalysisTab v-if="tab === 'analysis'" :logs="logs" :period="period" :offset="offset" />
       <Timeline v-if="tab === 'timeline'" :logs="logs" />
-      <LimitsTab v-if="tab === 'limits'" :limits="limits" :logs="logs" @changed="refresh" />
+      <LimitsTab v-if="tab === 'limits'" :limits="limits" :logs="todayLogs" @changed="refresh" />
       <SettingsTab v-if="tab === 'settings'" @changed="refresh" />
     </main>
   </div>
