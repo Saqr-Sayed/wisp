@@ -5,7 +5,8 @@ import '@fontsource/cairo/700.css'
 import '@fontsource/cairo/900.css'
 import './style.css'
 import App from './App.vue'
+import { currentMode, setMode, listenSystemTheme } from './lib/theme'
 
-const saved = localStorage.getItem('salmonella-theme')
-document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light')
+setMode(currentMode()) // applies stored mode (default 'system') — re-save is harmless
+listenSystemTheme()
 createApp(App).mount('#app')

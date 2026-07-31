@@ -5,15 +5,15 @@ import {
   getNameOverrides, setNameOverride, removeNameOverride,
   type LogEntry,
 } from '../lib/dbus'
-import { currentTheme, setTheme } from '../lib/theme'
+import { currentMode, setMode, type ThemeMode } from '../lib/theme'
 
 const props = defineProps<{ limits: [string, string, number][]; todayLogs: LogEntry[] }>()
 const emit = defineEmits<{ back: []; changed: [] }>()
 
-const theme = ref<'light' | 'dark'>(currentTheme())
-function toggleTheme() {
-  theme.value = theme.value === 'dark' ? 'light' : 'dark'
-  setTheme(theme.value)
+const theme = ref<ThemeMode>(currentMode())
+function toggleTheme(m: ThemeMode) {
+  theme.value = m
+  setMode(m)
 }
 
 const kind = ref<'app' | 'category'>('category')
@@ -97,8 +97,9 @@ async function addOverride() {
         <section class="card s-theme">
           <h3>المظهر</h3>
           <div class="theme-toggle">
-            <button class="pill" :class="{ on: theme === 'light' }" @click="theme !== 'light' && toggleTheme()">☀ فاتح</button>
-            <button class="pill" :class="{ on: theme === 'dark' }" @click="theme !== 'dark' && toggleTheme()">☾ داكن</button>
+            <button class="pill" :class="{ on: theme === 'system' }" @click="toggleTheme('system')">تلقائي</button>
+            <button class="pill" :class="{ on: theme === 'light' }" @click="toggleTheme('light')">☀ فاتح</button>
+            <button class="pill" :class="{ on: theme === 'dark' }" @click="toggleTheme('dark')">☾ داكن</button>
           </div>
         </section>
 
