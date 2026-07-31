@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { startOfDay, dow } from '../lib/dates'
+import { startOfDay } from '../lib/dates'
 import { formatDuration, eventDuration, type LogEntry } from '../lib/dbus'
 import { weeksCount, sameDowSum, hourScale, weekRangeLabel } from '../lib/overview'
 
-const props = defineProps<{ days: Date[]; logs: LogEntry[]; dayLogs: LogEntry[]; selected: Date; limits: [string, string, number][]; history: LogEntry[]; curWeekLogs: LogEntry[] }>()
+const props = defineProps<{ days: Date[]; logs: LogEntry[]; dayLogs: LogEntry[]; selected: Date; limits: [string, string, number][]; history: LogEntry[]; curWeekLogs: LogEntry[]; weekOffset: number }>()
 const emit = defineEmits<{ select: [Date]; prev: []; next: [] }>()
 
 const CHART_H = 120
 const WEEKDAYS_FULL = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
 
-const curStart = (() => { const d = startOfDay(new Date()); d.setDate(d.getDate() - dow(d)); return d })()
-const isCurrentWeek = computed(() => props.days[0].getTime() === curStart.getTime())
+const isCurrentWeek = computed(() => props.weekOffset === 0)
 const weekTitle = computed(() => weekRangeLabel(props.days[0], props.days[6], isCurrentWeek.value))
 
 function dayLogs(day: Date): LogEntry[] {
