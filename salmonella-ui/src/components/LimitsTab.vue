@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { getLimits, setLimit, removeLimit, eventDuration, categoryLabel, type LogEntry } from '../lib/dbus'
+import { setLimit, removeLimit, eventDuration, categoryLabel, type LogEntry } from '../lib/dbus'
 
 const props = defineProps<{ limits: [string, string, number][]; logs: LogEntry[] }>()
 const emit = defineEmits<{ changed: [] }>()

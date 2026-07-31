@@ -32,9 +32,21 @@ export function formatDuration(secs: number | null): string {
 
 export function periodRange(period: Period, offset: number): [number, number] {
   const now = new Date()
-  now.setDate(now.getDate() - offset * (period === 'week' ? 7 : 1))
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+  if (period === 'day') {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset)
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)
+    const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59)
+    return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)]
+  }
+  if (period === 'week') {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset * 7)
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 6, 0, 0, 0)
+    const end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59)
+    return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)]
+  }
+  const m = new Date(now.getFullYear(), now.getMonth() - offset, 1)
+  const start = new Date(m.getFullYear(), m.getMonth(), 1, 0, 0, 0)
+  const end = new Date(m.getFullYear(), m.getMonth() + 1, 0, 23, 59, 59)
   return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)]
 }
 

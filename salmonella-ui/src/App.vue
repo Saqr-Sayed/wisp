@@ -6,7 +6,7 @@ import LimitsTab from './components/LimitsTab.vue'
 import SettingsTab from './components/SettingsTab.vue'
 import StatusCard from './components/StatusCard.vue'
 import SearchBar from './components/SearchBar.vue'
-import { getTimeline, getLimits, periodRange, eventDuration, type Period, type LogEntry } from './lib/dbus'
+import { getTimeline, getLimits, periodRange, eventDuration, categoryLabel, type Period, type LogEntry } from './lib/dbus'
 
 const tab = ref<'analysis' | 'timeline' | 'limits' | 'settings'>('analysis')
 const period = ref<Period>('day')
@@ -27,14 +27,9 @@ const overSet = ref(new Map<string, string>()) // key "kind:target" -> رسال�
 let lastNotified = new Map<string, number>() // key -> epoch of last notification
 
 function evalLabel(target: string, kind: string): string {
-  if (kind === 'category') return categoryLabelCompat(target)
+  if (kind === 'category') return categoryLabel(target)
   const hit = logs.value.find(l => l.app_name === target)
   return hit?.friendly_name ?? target
-}
-
-function categoryLabelCompat(c: string): string {
-  const map: Record<string, string> = { media: 'وسائط', reading: 'قراءة', games: 'ألعاب', entertainment: 'ترفيه', productivity: 'إنتاجية', browsing: 'تصفح', other: 'أخرى' }
-  return map[c] ?? c
 }
 
 function evaluateLimits() {
@@ -59,8 +54,10 @@ function notify() {
     for (const [key, msg] of overSet.value) {
       const last = lastNotified.get(key) ?? 0
       if (nowMs - last > 10 * 60 * 1000) { // تذكير كل 10 دقائق
-        lastNotified.set(key, nowMs)
-        new Notification('Salmonella', { body: msg })
+        try {
+          new Notification('Salmonella', { body: msg })
+          lastNotified.set(key, nowMs)
+        } catch { /* ignore */ }
       }
     }
   }
