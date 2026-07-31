@@ -46,7 +46,13 @@ const avgDayNow = computed(() => sameDowSum(avgWindow.value, props.selected) / a
 const avgWeek = computed(() => avgWindow.value.reduce((s, l) => s + eventDuration(l), 0) / avgDivisor.value)
 
 const maxHours = computed(() => hourScale(Math.max(...dayTotals.value) / 3600, avgDayNow.value / 3600))
-const hourTicks = computed(() => Array.from({ length: maxHours.value + 1 }, (_, i) => i))
+const hourTicks = computed(() => {
+  const m = maxHours.value
+  const t: number[] = []
+  for (let h = 0; h <= m; h += 2) t.push(h)
+  if (t[t.length - 1] !== m) t.push(m)
+  return t
+})
 
 function barPx(total: number): number {
   return Math.max(3, Math.round((total / (maxHours.value * 3600)) * CHART_H))
