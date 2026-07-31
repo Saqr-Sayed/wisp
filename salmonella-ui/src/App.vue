@@ -123,7 +123,7 @@ const ribbonSegs = computed(() => {
     <main>
       <Transition name="view" mode="out-in">
         <div v-if="view === 'dashboard'" key="dash" class="dash">
-          <WeekNav class="w-nav" :days="weekDays" :logs="weekLogs" :dayLogs="dayLogs" :selected="selectedDay" :limits="limits" :history="historyLogs"
+          <WeekNav :days="weekDays" :logs="weekLogs" :dayLogs="dayLogs" :selected="selectedDay" :limits="limits" :history="historyLogs"
             @select="selectDay" @prev="weekOffset++; refresh()"
             @next="weekOffset = Math.max(0, weekOffset - 1); refresh()" />
 
