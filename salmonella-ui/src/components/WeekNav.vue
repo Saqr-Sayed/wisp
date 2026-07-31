@@ -101,9 +101,7 @@ function dayTitle(i: number, day: Date): string {
         <div class="w-grid">
           <div class="w-lines">
             <div v-for="h in hourTicks" :key="h" class="w-line" :style="{ bottom: (h / maxHours * 100) + '%' }"></div>
-            <div class="w-avgline" :style="{ bottom: avgLinePct + '%' }">
-              <span class="w-avgtag">متوسط اليوم</span>
-            </div>
+            <div class="w-avgline" :style="{ bottom: avgLinePct + '%' }"></div>
           </div>
           <div v-for="(day, i) in days" :key="day.getTime()" class="w-col" :class="{ on: isSelected(day) }"
             :title="dayTitle(i, day)" @click="emit('select', day)">
