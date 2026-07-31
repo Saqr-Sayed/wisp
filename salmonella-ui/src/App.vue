@@ -53,10 +53,8 @@ function notify() {
   for (const [key, msg] of overSet.value) {
     const last = lastNotified.get(key) ?? 0
     if (nowMs - last > 10 * 60 * 1000) { // تذكير كل 10 دقائق
-      try {
-        invoke('notify', { body: msg })
-        lastNotified.set(key, nowMs)
-      } catch { /* ignore */ }
+      invoke('notify', { body: msg }).catch(() => {})
+      lastNotified.set(key, nowMs)
     }
   }
 }
