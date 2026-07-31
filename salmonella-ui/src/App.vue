@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import AnalysisTab from './components/AnalysisTab.vue'
 import Timeline from './components/Timeline.vue'
 import LimitsTab from './components/LimitsTab.vue'
@@ -48,26 +49,20 @@ function evaluateLimits() {
 }
 
 function notify() {
-  if (!('Notification' in window)) return
-  if (Notification.permission === 'granted') {
-    const nowMs = Date.now()
-    for (const [key, msg] of overSet.value) {
-      const last = lastNotified.get(key) ?? 0
-      if (nowMs - last > 10 * 60 * 1000) { // تذكير كل 10 دقائق
-        try {
-          new Notification('Salmonella', { body: msg })
-          lastNotified.set(key, nowMs)
-        } catch { /* ignore */ }
-      }
+  const nowMs = Date.now()
+  for (const [key, msg] of overSet.value) {
+    const last = lastNotified.get(key) ?? 0
+    if (nowMs - last > 10 * 60 * 1000) { // تذكير كل 10 دقائق
+      try {
+        invoke('notify', { body: msg })
+        lastNotified.set(key, nowMs)
+      } catch { /* ignore */ }
     }
   }
 }
 
 let timer: number | undefined
 onMounted(async () => {
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission()
-  }
   await refresh()
   timer = window.setInterval(async () => { await refresh(); notify() }, 5000)
 })

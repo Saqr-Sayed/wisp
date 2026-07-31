@@ -19,6 +19,15 @@ pub struct LogEntry {
     pub episode: String,
 }
 
+pub fn show_notification(body: &str) -> Result<(), String> {
+    notify_rust::Notification::new()
+        .summary("Salmonella")
+        .body(body)
+        .show()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(target_os = "linux")]
 mod commands {
     use super::LogEntry;
@@ -47,6 +56,11 @@ mod commands {
         )
         .await
         .map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn notify(body: String) -> Result<(), String> {
+        super::show_notification(&body)
     }
 
     #[tauri::command]
@@ -187,6 +201,11 @@ mod commands {
     }
 
     #[tauri::command]
+    pub fn notify(body: String) -> Result<(), String> {
+        super::show_notification(&body)
+    }
+
+    #[tauri::command]
     pub fn set_name_override(db: State<'_, Arc<Db>>, app_id: String, friendly: String) -> Result<(), String> {
         db.set_name_override(&app_id, &friendly);
         Ok(())
@@ -201,7 +220,7 @@ mod commands {
 
 use commands::{
     get_limits, get_name_overrides, get_report, get_series, get_status, get_timeline,
-    remove_limit, remove_name_override, search, set_limit, set_name_override,
+    notify, remove_limit, remove_name_override, search, set_limit, set_name_override,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -209,6 +228,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
+            notify,
             get_timeline, get_status, search,
             get_report, get_series, get_limits, set_limit, remove_limit,
             get_name_overrides, set_name_override, remove_name_override,
