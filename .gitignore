@@ -3,3 +3,5 @@ node_modules/
 dist/
 salmonella-ui/src-tauri/gen/
 
+
+.superpowers/
