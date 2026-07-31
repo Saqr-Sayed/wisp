@@ -11,7 +11,7 @@ const results = ref<LogEntry[]>([])
 watch(() => props.query, async (q) => {
   if (!q.trim()) { results.value = []; return }
   results.value = await search(q)
-})
+}, { immediate: true })
 
 function rowStyle(cat: string) { return { background: categoryColor(cat) } }
 </script>
