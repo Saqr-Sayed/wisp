@@ -1,0 +1,16 @@
+[package]
+name = "salmonella-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = "5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = "0.4"
+zbus = "4"
+tokio = { version = "1", features = ["full"] }
+wayland-client = "0.31"
+wayland-protocols-wlr = "0.3"
+wayland-protocols = "0.32"
