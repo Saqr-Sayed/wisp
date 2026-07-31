@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::db::Db;
+use crate::db::{Db, LogEvent};
 use crate::classifier::classify;
 
 /// Source of the currently focused window (app id/name, window title).
@@ -54,11 +54,63 @@ pub fn run_tracker_loop<F>(
             }
 
             let et = classify(&app, &title);
-            current_log_id = Some(db.insert_log(et, &app, &title, now));
+            let friendly = db.friendly_name(&app);
+            let enriched = crate::classifier::enrich(&app, &title);
+            let log_event = LogEvent {
+                event_type: et,
+                category: enriched.category,
+                friendly: &friendly,
+                site: &enriched.site,
+                series: &enriched.series,
+                episode: &enriched.episode,
+                app: &app,
+                title: &title,
+            };
+            current_log_id = Some(db.insert_log(&log_event, now));
             on_change(&app, &title, now);
 
             prev_app = app.clone();
             prev_title = title.clone();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Db;
+
+    struct FakeSource(Vec<(String, String)>, usize);
+    impl WindowSource for FakeSource {
+        fn active_window(&mut self) -> (String, String) {
+            let i = self.1.min(self.0.len() - 1);
+            let r = self.0[i].clone();
+            if self.1 < self.0.len() - 1 { self.1 += 1; }
+            r
+        }
+    }
+
+    #[test]
+    fn inserts_enriched_data() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        let backend = FakeSource(vec![
+            ("org.mozilla.firefox.desktop".into(), "عنوان - YouTube — Mozilla Firefox".into()),
+        ], 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut first = true;
+            run_tracker_loop(db.clone(), backend, |_, _, _| { if first { tx.send(()).unwrap(); first = false; } });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].friendly_name, "فايرفوكس");
+        assert_eq!(rows[0].site, "YouTube");
+        assert_eq!(rows[0].category, "media");
+        let _ = std::fs::remove_file(&path);
     }
 }
