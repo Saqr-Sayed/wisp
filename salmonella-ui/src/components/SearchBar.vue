@@ -19,8 +19,8 @@ watch(query, async (q) => {
     <input v-model="query" placeholder="ابحث في سجل النشاط..." />
     <div v-for="r in results" :key="'s' + r.id" class="entry">
       <span class="time">{{ formatTime(r.start_time) }}</span>
-      <span class="badge" :class="r.event_type">{{ r.event_type }}</span>
-      <span class="app">{{ r.app_name }}</span>
+      <span class="badge" :class="r.category">{{ r.category }}</span>
+      <span class="app">{{ r.friendly_name || r.app_name }}</span>
       <span class="title">{{ r.window_title }}</span>
       <span class="duration">{{ formatDuration(r.duration) }}</span>
     </div>

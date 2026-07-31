@@ -3,3 +3,6 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; dir
 #shell { max-width: 800px; margin: 0 auto; padding: 1rem; }
 header { text-align: center; padding: 1rem 0; }
 h1 { font-size: 1.5rem; color: #e94560; }
+#shell { max-width: 1400px; margin: 0 auto; }
+#shell > header { position: sticky; top: 0; background: #0d0d0d; z-index: 10; }
+#shell > main { display: flex; flex-direction: column; }

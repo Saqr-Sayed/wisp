@@ -8,30 +8,68 @@ export interface LogEntry {
   start_time: number
   end_time: number | null
   duration: number | null
+  friendly_name: string
+  site: string
+  category: string
+  series: string
+  episode: string
 }
 
-function formatTime(ts: number): string {
+export type Period = 'day' | 'week' | 'month'
+
+export function formatTime(ts: number): string {
   const d = new Date(ts * 1000)
   return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatDuration(secs: number | null): string {
+export function formatDuration(secs: number | null): string {
   if (!secs) return '—'
   const m = Math.floor(secs / 60)
   const s = secs % 60
+  if (m >= 60) return `${Math.floor(m / 60)}س ${m % 60}د`
   return `${m}د ${s}ث`
+}
+
+export function periodRange(period: Period, offset: number): [number, number] {
+  const now = new Date()
+  now.setDate(now.getDate() - offset * (period === 'week' ? 7 : 1))
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+  return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)]
+}
+
+export const CATEGORY_COLORS: Record<string, string> = {
+  media: '#e94560', reading: '#4caf50', games: '#9c27b0',
+  entertainment: '#ff9800', productivity: '#2196f3',
+  browsing: '#607d8b', other: '#555555',
+}
+
+export const CATEGORY_LABELS: Record<string, string> = {
+  media: 'وسائط', reading: 'قراءة', games: 'ألعاب', entertainment: 'ترفيه',
+  productivity: 'إنتاجية', browsing: 'تصفح', other: 'أخرى',
+}
+
+export function categoryLabel(c: string): string { return CATEGORY_LABELS[c] ?? c }
+
+/** مدة الحدث محتسبةً الحدث الجاري (duration ?? now - start_time) */
+export function eventDuration(e: LogEntry, nowSec = Math.floor(Date.now() / 1000)): number {
+  return e.duration ?? Math.max(0, nowSec - e.start_time)
 }
 
 export async function getTimeline(from: number, to: number): Promise<LogEntry[]> {
   return invoke('get_timeline', { from, to })
 }
-
-export async function getStatus() {
-  return invoke('get_status')
+export async function getStatus() { return invoke('get_status') }
+export async function search(query: string): Promise<LogEntry[]> { return invoke('search', { query }) }
+export async function getReport(from: number, to: number, groupBy: string): Promise<[string, number][]> {
+  return invoke('get_report', { from, to, groupBy })
 }
-
-export async function search(query: string): Promise<LogEntry[]> {
-  return invoke('search', { query })
+export async function getSeries(from: number, to: number): Promise<[string, string, number][]> {
+  return invoke('get_series', { from, to })
 }
-
-export { formatTime, formatDuration }
+export async function getLimits(): Promise<[string, string, number][]> { return invoke('get_limits') }
+export async function setLimit(target: string, kind: string, minutes: number) { return invoke('set_limit', { target, kind, minutes }) }
+export async function removeLimit(target: string) { return invoke('remove_limit', { target }) }
+export async function getNameOverrides(): Promise<[string, string][]> { return invoke('get_name_overrides') }
+export async function setNameOverride(appId: string, friendly: string) { return invoke('set_name_override', { appId, friendly }) }
+export async function removeNameOverride(appId: string) { return invoke('remove_name_override', { appId }) }
