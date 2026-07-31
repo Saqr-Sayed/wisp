@@ -80,6 +80,10 @@ impl Db {
                 target TEXT PRIMARY KEY,
                 kind TEXT NOT NULL CHECK(kind IN ('app','category')),
                 daily_minutes INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             );"
         ).expect("migrate tables");
 
@@ -232,6 +236,20 @@ impl Db {
 
     pub fn remove_name_override(&self, app_id: &str) {
         self.conn.lock().unwrap().execute("DELETE FROM name_overrides WHERE app_id=?1", params![app_id]).ok();
+    }
+
+    pub fn get_setting(&self, key: &str) -> Option<String> {
+        self.conn.lock().unwrap().query_row(
+            "SELECT value FROM settings WHERE key=?1", params![key], |r| r.get::<_, String>(0)
+        ).ok()
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) {
+        self.conn.lock().unwrap().execute(
+            "INSERT INTO settings(key,value) VALUES(?1,?2)
+             ON CONFLICT(key) DO UPDATE SET value=?2",
+            params![key, value],
+        ).ok();
     }
 
     pub fn friendly_name(&self, app: &str) -> String {

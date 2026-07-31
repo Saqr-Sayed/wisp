@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { getReport, getSeries, formatDuration, categoryLabel, categoryColor, type LogEntry } from '../lib/dbus'
+import { t } from '../lib/i18n'
 
 const props = defineProps<{ logs: LogEntry[]; range: [number, number]; loading: boolean; groupBy: 'app' | 'category' | 'site' | 'series' }>()
 const emit = defineEmits<{ 'update:groupBy': ['app' | 'category' | 'site' | 'series'] }>()
@@ -43,7 +44,7 @@ function label(g: string, key: string): string {
     <div class="pill-group">
       <button v-for="g in (['app', 'category', 'site', 'series'] as const)" :key="g"
         class="pill" :class="{ on: groupBy === g }" @click="emit('update:groupBy', g)">
-        {{ g === 'app' ? 'التطبيقات' : g === 'category' ? 'الفئات' : g === 'site' ? 'المواقع' : 'المسلسلات' }}
+        {{ g === 'app' ? t('analysis.pill.app') : g === 'category' ? t('analysis.pill.category') : g === 'site' ? t('analysis.pill.site') : t('analysis.pill.series') }}
       </button>
     </div>
 
@@ -54,10 +55,10 @@ function label(g: string, key: string): string {
     <div v-else-if="groupBy === 'series'" class="series">
       <div v-for="[s, a] in seriesAgg" :key="s" class="srow">
         <b>{{ s }}</b>
-        <span class="s-eps">{{ a.eps }} حلقة</span>
+        <span class="s-eps">{{ t('analysis.episodesCount', { n: a.eps }) }}</span>
         <span class="s-dur">{{ formatDuration(a.secs) }}</span>
       </div>
-      <div v-if="series.length === 0" class="empty">📊 لا حلقات في هذه الفترة</div>
+      <div v-if="series.length === 0" class="empty">{{ t('analysis.empty.episodes') }}</div>
     </div>
 
     <div v-else class="bars">
@@ -68,7 +69,7 @@ function label(g: string, key: string): string {
         </div>
         <span class="bar-val">{{ formatDuration(d) }} · {{ pct(d) }}%</span>
       </div>
-      <div v-if="report.length === 0" class="empty">📊 لا بيانات في هذه الفترة</div>
+      <div v-if="report.length === 0" class="empty">{{ t('analysis.empty.data') }}</div>
     </div>
 
   </div>

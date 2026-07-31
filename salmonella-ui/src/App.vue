@@ -7,6 +7,10 @@ import WeekNav from './components/WeekNav.vue'
 import SettingsPage from './components/SettingsPage.vue'
 import { getTimeline, getLimits, eventDuration, categoryLabel, type LogEntry } from './lib/dbus'
 import { startOfDay, daysOfWeek, dayRange } from './lib/dates'
+import { setLocale, t } from './lib/i18n'
+import { getSetting } from './lib/dbus'
+
+setLocale((typeof navigator !== 'undefined' && navigator.language?.slice(0,2) === 'en') ? 'en' : 'ar')
 
 const view = ref<'dashboard' | 'settings'>('dashboard')
 const weekOffset = ref(0)
@@ -65,7 +69,7 @@ function evaluateLimits() {
   const over = new Map<string, string>()
   for (const [target, kind, minutes] of limits.value) {
     const u = (used.get(`${kind}:${target}`) ?? 0) / 60
-    if (u > minutes) over.set(`${kind}:${target}`, `تجاوزت حد ${evalLabel(target, kind)}: ${minutes} دقيقة`)
+    if (u > minutes) over.set(`${kind}:${target}`, t('app.banner.exceeded', { target: evalLabel(target, kind), minutes }))
   }
   overSet.value = over
 }
@@ -82,6 +86,8 @@ function notify() {
 
 let timer: number | undefined
 onMounted(async () => {
+  const stored = await getSetting('language').catch(() => 'auto')
+  setLocale((stored as 'auto' | 'ar' | 'en') ?? 'auto')
   await refresh()
   timer = window.setInterval(async () => { await refresh(); notify() }, 5000)
 })
@@ -109,15 +115,15 @@ const ribbonSegs = computed(() => {
   <div id="shell" class="rtl">
     <header class="hdr">
       <div class="hdr-row">
-        <div class="brand">سالمونيلا</div>
-        <button v-if="view === 'dashboard'" class="icon-btn gear" aria-label="الإعدادات" @click="view = 'settings'">
+        <div class="brand">{{ t('app.brand') }}</div>
+        <button v-if="view === 'dashboard'" class="icon-btn gear" :aria-label="t('settings.title')" @click="view = 'settings'">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
       </div>
 
       <div v-if="error" class="error-banner" role="alert">
-        تعذّر تحديث البيانات
-        <button class="btn primary small" @click="refresh">إعادة المحاولة</button>
+        {{ t('app.error.fetch') }}
+        <button class="btn primary small" @click="refresh">{{ t('app.error.retry') }}</button>
       </div>
       <div v-if="overSet.size" class="over-banner" role="alert">
         ⚠ {{ [...overSet.values()].join(' · ') }}

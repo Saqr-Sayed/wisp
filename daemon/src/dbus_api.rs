@@ -82,6 +82,15 @@ impl ActivityTracker {
         self.db.remove_name_override(app_id);
     }
 
+    async fn get_setting(&self, key: String) -> zbus::fdo::Result<String> {
+        Ok(self.db.get_setting(&key).unwrap_or_default())
+    }
+
+    async fn set_setting(&self, key: String, value: String) -> zbus::fdo::Result<()> {
+        self.db.set_setting(&key, &value);
+        Ok(())
+    }
+
     #[zbus(signal)]
     async fn window_changed(&self, ctxt: &zbus::object_server::SignalContext<'_>, app_name: &str, window_title: &str, since: i64) -> zbus::Result<()>;
 }

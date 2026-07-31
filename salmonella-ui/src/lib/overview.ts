@@ -29,9 +29,13 @@ export function hourScale(maxDayHours: number, avgDayHours: number): number {
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
 
-/** تسمية بطاقة الأسبوع: «هذا الأسبوع» أو نطاق التاريخ القصير */
-export function weekRangeLabel(a: Date, b: Date, isCurrent: boolean): string {
-  if (isCurrent) return 'هذا الأسبوع'
-  if (a.getMonth() === b.getMonth()) return `${a.getDate()} – ${b.getDate()} ${MONTHS[a.getMonth()]}`
-  return `${a.getDate()} ${MONTHS[a.getMonth()]} – ${b.getDate()} ${MONTHS[b.getMonth()]}`
+/** تسمية بطاقة الأسبوع: «هذا الأسبوع» أو نطاق التاريخ القصير
+ *  يستقبل t من i18n.ts لتسمية الشهر والوضع الحالي؛ الافتراضي يستخدم MONTHS المحلية */
+export function weekRangeLabel(a: Date, b: Date, isCurrent: boolean, t?: (k: string) => string): string {
+  const tFn = t ?? ((k: string) => k === 'overview.thisWeek' ? 'هذا الأسبوع' : MONTHS[+k.split('.')[1]])
+  if (isCurrent) return tFn('overview.thisWeek')
+  const ma = tFn('months.' + a.getMonth())
+  const mb = tFn('months.' + b.getMonth())
+  if (a.getMonth() === b.getMonth()) return `${a.getDate()} – ${b.getDate()} ${ma}`
+  return `${a.getDate()} ${ma} – ${b.getDate()} ${mb}`
 }

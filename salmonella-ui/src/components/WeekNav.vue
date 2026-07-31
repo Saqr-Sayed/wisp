@@ -3,16 +3,15 @@ import { computed } from 'vue'
 import { startOfDay } from '../lib/dates'
 import { formatDuration, eventDuration, type LogEntry } from '../lib/dbus'
 import { weeksCount, sameDowSum, hourScale, weekRangeLabel } from '../lib/overview'
+import { t } from '../lib/i18n'
 
 const props = defineProps<{ days: Date[]; logs: LogEntry[]; dayLogs: LogEntry[]; selected: Date; limits: [string, string, number][]; history: LogEntry[]; curWeekLogs: LogEntry[]; weekOffset: number }>()
 const emit = defineEmits<{ select: [Date]; prev: []; next: [] }>()
 
 const CHART_H = 120
-const WEEKDAYS_FULL = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة']
-const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
 
 const isCurrentWeek = computed(() => props.weekOffset === 0)
-const weekTitle = computed(() => weekRangeLabel(props.days[0], props.days[6], isCurrentWeek.value))
+const weekTitle = computed(() => weekRangeLabel(props.days[0], props.days[6], isCurrentWeek.value, t))
 
 function dayLogs(day: Date): LogEntry[] {
   return props.logs.filter(l => startOfDay(new Date(l.start_time * 1000)).getTime() === day.getTime())
@@ -67,33 +66,33 @@ function isToday(d: Date) { return d.getTime() === startOfDay(new Date()).getTim
 function isSelected(d: Date) { return d.getTime() === props.selected.getTime() }
 
 function dayTitle(i: number, day: Date): string {
-  const t = dayTotal(day)
+  const total = dayTotal(day)
   const over = dayOverage(day)
-  return `${WEEKDAYS_FULL[i]} ${day.getDate()} ${MONTHS[day.getMonth()]} — ${formatDuration(t)}${over > 0 ? ` · +${formatDuration(over)} تجاوز` : ''}`
+  return `${t('weekdays.full.' + i)} ${day.getDate()} ${t('months.' + day.getMonth())} — ${formatDuration(total)}${over > 0 ? ` · +${formatDuration(over)} ${t('overview.over')}` : ''}`
 }
 </script>
 
 <template>
   <div class="w-card card">
     <div class="w-head">
-      <span class="w-title">نظرة عامة</span>
+      <span class="w-title">{{ t('overview.title') }}</span>
       <span class="w-nav">
-        <button class="icon-btn" aria-label="الأسبوع السابق" @click="emit('prev')">‹</button>
-        <button class="icon-btn" aria-label="الأسبوع التالي" @click="emit('next')">›</button>
+        <button class="icon-btn" :aria-label="t('overview.prevWeek')" @click="emit('prev')">‹</button>
+        <button class="icon-btn" :aria-label="t('overview.nextWeek')" @click="emit('next')">›</button>
       </span>
     </div>
 
     <div class="w-body">
       <div class="w-cards">
         <div class="w-mcard">
-          <div class="w-mc-label">اليوم</div>
+          <div class="w-mc-label">{{ t('overview.today') }}</div>
           <div class="w-mc-num">{{ formatDuration(selectedTotal) }}</div>
-          <div class="w-mc-avg">متوسط اليوم: {{ formatDuration(avgDayNow) }}</div>
+          <div class="w-mc-avg">{{ t('overview.avgDayLabel') }} {{ formatDuration(avgDayNow) }}</div>
         </div>
         <div class="w-mcard">
           <div class="w-mc-label">{{ weekTitle }}</div>
           <div class="w-mc-num muted">{{ formatDuration(weekTotal) }}</div>
-          <div class="w-mc-avg">متوسط الأسبوع: {{ formatDuration(avgWeek) }}</div>
+          <div class="w-mc-avg">{{ t('overview.avgWeekLabel') }} {{ formatDuration(avgWeek) }}</div>
         </div>
       </div>
 
@@ -111,7 +110,7 @@ function dayTitle(i: number, day: Date): string {
                   :style="{ height: overPx(dayOverage(day), dayTotal(day)) + 'px' }"></div>
               </div>
             </div>
-            <span class="w-dow">{{ WEEKDAYS_FULL[i] }}</span>
+            <span class="w-dow">{{ t('weekdays.full.' + i) }}</span>
             <span class="w-num" :class="{ today: isToday(day) }">{{ day.getDate() }}</span>
           </div>
         </div>

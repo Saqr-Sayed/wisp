@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { formatTime, formatDuration, eventDuration, categoryColor, categoryLabel, search, type LogEntry } from '../lib/dbus'
+import { t } from '../lib/i18n'
 
 const props = defineProps<{ logs: LogEntry[]; loading: boolean; query: string; ribbon: [string, number][] }>()
 const emit = defineEmits<{ 'update:query': [string] }>()
@@ -34,15 +35,15 @@ onMounted(() => {
 <template>
   <div ref="cardEl" class="t-card card">
     <div class="t-head">
-      <b>سجل النشاط</b>
-      <span class="t-count">{{ query ? results.length : logs.length }} حدثاً</span>
+      <b>{{ t('timeline.title') }}</b>
+      <span class="t-count">{{ t('timeline.eventCount', { n: query ? results.length : logs.length }) }}</span>
     </div>
-    <div v-if="ribbon.length" class="t-ribbon" role="img" aria-label="فئات اليوم">
+    <div v-if="ribbon.length" class="t-ribbon" role="img" :aria-label="t('timeline.ribbonLabel')">
       <div v-for="[cat, d] in ribbon" :key="'rib' + cat" class="rib-seg"
         :style="{ flexGrow: Math.max(1, d), background: categoryColor(cat) }"
         :title="categoryLabel(cat)"></div>
     </div>
-    <input :value="query" @input="emit('update:query', ($event.target as HTMLInputElement).value)" class="t-search" placeholder="ابحث في سجل النشاط..." />
+    <input :value="query" @input="emit('update:query', ($event.target as HTMLInputElement).value)" class="t-search" :placeholder="t('timeline.searchPlaceholder')" />
 
     <div ref="listEl" class="t-list">
       <template v-if="query">
@@ -54,7 +55,7 @@ onMounted(() => {
           <span class="title">{{ r.window_title }}</span>
           <span class="duration">{{ formatDuration(eventDuration(r)) }}</span>
         </div>
-        <div v-if="results.length === 0" class="empty">لا نتائج لـ «{{ query }}»</div>
+        <div v-if="results.length === 0" class="empty">{{ t('timeline.empty.results', { q: query }) }}</div>
       </template>
 
       <template v-else>
@@ -77,7 +78,7 @@ onMounted(() => {
             <span class="title">{{ log.window_title }}</span>
             <span class="duration">{{ formatDuration(eventDuration(log)) }}</span>
           </div>
-          <div v-if="logs.length === 0" class="empty">🌙 لا توجد أحداث في هذه الفترة</div>
+          <div v-if="logs.length === 0" class="empty">{{ t('timeline.empty.events') }}</div>
         </template>
       </template>
     </div>

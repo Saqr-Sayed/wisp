@@ -3,9 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import {
   setLimit, removeLimit, eventDuration, categoryLabel,
   getNameOverrides, setNameOverride, removeNameOverride,
+  getSetting, setSetting,
   type LogEntry,
 } from '../lib/dbus'
 import { currentMode, setMode, type ThemeMode } from '../lib/theme'
+import { t, setLocale } from '../lib/i18n'
 
 const props = defineProps<{ limits: [string, string, number][]; todayLogs: LogEntry[] }>()
 const emit = defineEmits<{ back: []; changed: [] }>()
@@ -14,6 +16,18 @@ const theme = ref<ThemeMode>(currentMode())
 function toggleTheme(m: ThemeMode) {
   theme.value = m
   setMode(m)
+}
+
+const lang = ref<'auto' | 'ar' | 'en'>('auto')
+onMounted(async () => {
+  const v = await getSetting('language').catch(() => 'auto')
+  if (v === 'ar' || v === 'en' || v === 'auto') lang.value = v
+  overrides.value = await getNameOverrides()
+})
+async function setLang(v: 'auto' | 'ar' | 'en') {
+  lang.value = v
+  await setSetting('language', v)
+  setLocale(v)
 }
 
 const kind = ref<'app' | 'category'>('category')
@@ -51,8 +65,6 @@ const overrides = ref<[string, string][]>([])
 const appId = ref('')
 const friendly = ref('')
 
-onMounted(async () => { overrides.value = await getNameOverrides() })
-
 async function addOverride() {
   if (!appId.value.trim() || !friendly.value.trim()) return
   await setNameOverride(appId.value.trim(), friendly.value.trim())
@@ -66,58 +78,70 @@ async function addOverride() {
 <template>
   <div class="settings-page">
     <header class="s-head">
-      <button class="icon-btn" aria-label="رجوع" @click="emit('back')">
+      <button class="icon-btn" :aria-label="t('settings.back')" @click="emit('back')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
       </button>
-      <b class="s-title">الإعدادات</b>
+      <b class="s-title">{{ t('settings.title') }}</b>
     </header>
 
     <div class="s-cols">
       <section class="card s-limits">
-        <h3>الحدود</h3>
+        <h3>{{ t('settings.limits.title') }}</h3>
         <div class="add-form">
           <select v-model="kind">
-            <option value="category">فئة</option>
-            <option value="app">تطبيق (معرف)</option>
+            <option value="category">{{ t('settings.limits.kind.category') }}</option>
+            <option value="app">{{ t('settings.limits.kind.app') }}</option>
           </select>
-          <input v-model="target" :placeholder="kind === 'category' ? 'مثال: media / productivity' : 'مثال: org.mozilla.firefox.desktop'" />
-          <input v-model.number="minutes" type="number" min="1" placeholder="دقيقة/يوم" />
-          <button class="btn primary" @click="addLimit">إضافة</button>
+          <input v-model="target" :placeholder="kind === 'category' ? t('settings.limits.placeholder.category') : t('settings.limits.placeholder.app')" />
+          <input v-model.number="minutes" type="number" min="1" :placeholder="t('settings.limits.minutes')" />
+          <button class="btn primary" @click="addLimit">{{ t('settings.limits.add') }}</button>
         </div>
-        <div v-for="[t, k, m] in limits" :key="k + ':' + t" class="limit-row">
-          <span class="lname">{{ label(t, k) }}</span>
-          <span class="lused" :class="{ over: usedOf(k, t) > m }">{{ usedOf(k, t) }} / {{ m }} دقيقة</span>
-          <span v-if="usedOf(k, t) > m" class="over-label">تجاوزت!</span>
-          <button class="btn ghost small" @click="removeLimit(t).then(() => emit('changed'))">حذف</button>
+        <div v-for="[tgt, k, m] in limits" :key="k + ':' + tgt" class="limit-row">
+          <span class="lname">{{ label(tgt, k) }}</span>
+          <span class="lused" :class="{ over: usedOf(k, tgt) > m }">{{ t('settings.limits.used', { used: usedOf(k, tgt), max: m }) }}</span>
+          <span v-if="usedOf(k, tgt) > m" class="over-label">{{ t('settings.limits.exceeded') }}</span>
+          <button class="btn ghost small" @click="removeLimit(tgt).then(() => emit('changed'))">{{ t('settings.limits.delete') }}</button>
         </div>
-        <div v-if="limits.length === 0" class="empty">⏳ لا حدود — أضف حداً يومياً لفئة أو تطبيق</div>
+        <div v-if="limits.length === 0" class="empty">{{ t('settings.limits.empty') }}</div>
       </section>
 
       <div class="s-side">
-        <section class="card s-theme">
-          <h3>المظهر</h3>
+        <section class="card s-lang">
+          <h3>{{ t('settings.language.label') }}</h3>
           <div class="theme-toggle">
-            <button class="pill" :class="{ on: theme === 'system' }" @click="toggleTheme('system')">تلقائي</button>
-            <button class="pill" :class="{ on: theme === 'light' }" @click="toggleTheme('light')">☀ فاتح</button>
-            <button class="pill" :class="{ on: theme === 'dark' }" @click="toggleTheme('dark')">☾ داكن</button>
+            <button class="pill" :class="{ on: lang === 'auto' }" @click="setLang('auto')">{{ t('settings.language.auto') }}</button>
+            <button class="pill" :class="{ on: lang === 'ar' }" @click="setLang('ar')">{{ t('settings.language.ar') }}</button>
+            <button class="pill" :class="{ on: lang === 'en' }" @click="setLang('en')">{{ t('settings.language.en') }}</button>
+          </div>
+        </section>
+
+        <section class="card s-theme">
+          <h3>{{ t('settings.theme.title') }}</h3>
+          <div class="theme-toggle">
+            <button class="pill" :class="{ on: theme === 'system' }" @click="toggleTheme('system')">{{ t('settings.theme.pill.system') }}</button>
+            <button class="pill" :class="{ on: theme === 'light' }" @click="toggleTheme('light')">{{ t('settings.theme.pill.light') }}</button>
+            <button class="pill" :class="{ on: theme === 'dark' }" @click="toggleTheme('dark')">{{ t('settings.theme.pill.dark') }}</button>
           </div>
         </section>
 
         <section class="card s-overrides">
-          <h3>الأسماء المخصصة</h3>
-          <p class="hint">أضف اسماً ودياً لمعرف تطبيق — يظهر في كل التقارير. مثال: <code>org.mozilla.firefox.desktop</code> → <code>فايرفوكس</code></p>
+          <h3>{{ t('settings.overrides.title') }}</h3>
+          <p class="hint">
+            {{ t('settings.overrides.hint') }}
+            <span v-html="t('settings.overrides.example')"></span>
+          </p>
           <div class="add-form">
-            <input v-model="appId" placeholder="معرف التطبيق (app id)" />
-            <input v-model="friendly" placeholder="الاسم الودي" />
-            <button class="btn primary" @click="addOverride">إضافة / تعديل</button>
+            <input v-model="appId" :placeholder="t('settings.overrides.placeholder.appId')" />
+            <input v-model="friendly" :placeholder="t('settings.overrides.placeholder.friendly')" />
+            <button class="btn primary" @click="addOverride">{{ t('settings.overrides.add') }}</button>
           </div>
           <div v-for="[id, f] in overrides" :key="id" class="override-row">
             <code>{{ id }}</code>
             <span class="arrow">→</span>
             <b>{{ f }}</b>
-            <button class="btn ghost small" @click="removeNameOverride(id).then(() => overrides.value = overrides.value.filter(o => o[0] !== id)).then(() => emit('changed'))">حذف</button>
+            <button class="btn ghost small" @click="removeNameOverride(id).then(() => overrides.value = overrides.value.filter(o => o[0] !== id)).then(() => emit('changed'))">{{ t('settings.overrides.delete') }}</button>
           </div>
-          <div v-if="overrides.length === 0" class="empty">لا تعديلات</div>
+          <div v-if="overrides.length === 0" class="empty">{{ t('settings.overrides.empty') }}</div>
         </section>
       </div>
     </div>

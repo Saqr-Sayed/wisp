@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { locale as i18nLocale, t } from './i18n'
 
 export interface LogEntry {
   id: number
@@ -19,15 +20,20 @@ export type Period = 'day' | 'week' | 'month'
 
 export function formatTime(ts: number): string {
   const d = new Date(ts * 1000)
-  return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
+  const loc = i18nLocale.value === 'ar' ? 'ar-SA' : 'en-US'
+  return d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })
 }
 
 export function formatDuration(secs: number | null): string {
   if (!secs) return '—'
   const m = Math.floor(secs / 60)
   const s = secs % 60
-  if (m >= 60) return `${Math.floor(m / 60)}س ${m % 60}د`
-  return `${m}د ${s}ث`
+  if (m >= 60) {
+    const h = Math.floor(m / 60)
+    const rem = m % 60
+    return i18nLocale.value === 'ar' ? `${h}س ${rem}د` : `${h}h ${rem}m`
+  }
+  return i18nLocale.value === 'ar' ? `${m}د ${s}ث` : `${m}m ${s}s`
 }
 
 export function periodRange(period: Period, offset: number): [number, number] {
@@ -61,7 +67,10 @@ export const CATEGORY_LABELS: Record<string, string> = {
   productivity: 'إنتاجية', browsing: 'تصفح', other: 'أخرى',
 }
 
-export function categoryLabel(c: string): string { return CATEGORY_LABELS[c] ?? c }
+export function categoryLabel(c: string): string {
+  const k = `category.${c}`
+  return t(k) !== k ? t(k) : (CATEGORY_LABELS[c] ?? c)
+}
 
 /** مدة الحدث محتسبةً الحدث الجاري (duration ?? now - start_time) */
 export function eventDuration(e: LogEntry, nowSec = Math.floor(Date.now() / 1000)): number {
@@ -84,3 +93,9 @@ export async function removeLimit(target: string) { return invoke('remove_limit'
 export async function getNameOverrides(): Promise<[string, string][]> { return invoke('get_name_overrides') }
 export async function setNameOverride(appId: string, friendly: string) { return invoke('set_name_override', { appId, friendly }) }
 export async function removeNameOverride(appId: string) { return invoke('remove_name_override', { appId }) }
+export async function getSetting(key: string): Promise<string> {
+  return invoke('get_setting', { key })
+}
+export async function setSetting(key: string, value: string): Promise<void> {
+  return invoke('set_setting', { key, value })
+}
