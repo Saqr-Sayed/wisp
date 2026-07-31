@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { formatTime, formatDuration, eventDuration, categoryColor, categoryLabel, search, type LogEntry } from '../lib/dbus'
 
 const props = defineProps<{ logs: LogEntry[]; loading: boolean; query: string }>()
@@ -14,17 +14,32 @@ watch(() => props.query, async (q) => {
 }, { immediate: true })
 
 function rowStyle(cat: string) { return { background: categoryColor(cat) } }
+
+const listEl = ref<HTMLElement | null>(null)
+const cardEl = ref<HTMLElement | null>(null)
+
+function onWheel(e: WheelEvent) {
+  const el = listEl.value
+  if (!el) return
+  e.preventDefault()
+  const dy = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * 32 : e.deltaY
+  el.scrollTop += dy
+}
+
+onMounted(() => {
+  cardEl.value?.addEventListener('wheel', onWheel, { passive: false })
+})
 </script>
 
 <template>
-  <div class="t-card card">
+  <div ref="cardEl" class="t-card card">
     <div class="t-head">
       <b>الخط الزمني</b>
       <span class="t-count">{{ query ? results.length : logs.length }} حدثاً</span>
     </div>
     <input :value="query" @input="emit('update:query', ($event.target as HTMLInputElement).value)" class="t-search" placeholder="ابحث في سجل النشاط..." />
 
-    <div class="t-list">
+    <div ref="listEl" class="t-list">
       <template v-if="query">
         <div v-for="r in results" :key="'s' + r.id" class="entry" @click="selected = r" :class="{ on: selected?.id === r.id }">
           <span class="time">{{ formatTime(r.start_time) }}</span>
