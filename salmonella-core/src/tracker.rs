@@ -28,6 +28,8 @@ pub fn run_tracker_loop<F>(
     let mut prev_title = String::new();
     let mut current_log_id: Option<i64> = None;
 
+    db.close_dangling(unix_now());
+
     loop {
         std::thread::sleep(Duration::from_secs(1));
         let (app, title) = backend.active_window();

@@ -107,6 +107,15 @@ impl Db {
         conn.last_insert_rowid()
     }
 
+    /// Closes any entries left open by a previous run (crash/kill/reboot).
+    pub fn close_dangling(&self, now: i64) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE activity_logs SET end_time=?1, duration=?1-start_time WHERE end_time IS NULL",
+            params![now],
+        ).unwrap();
+    }
+
     pub fn close_log(&self, id: i64, end: i64) {
         let conn = self.conn.lock().unwrap();
         if let Ok(start) = conn.query_row(
@@ -313,6 +322,17 @@ mod tests {
         assert_eq!(ser, vec![("الدرس".to_string(), 100)]);
         let series = db.get_series(0, 999_999);
         assert_eq!(series, vec![("الدرس".to_string(), "26".to_string(), 100)]);
+    }
+
+    #[test] fn close_dangling_closes_open_rows() {
+        let db = tmp_db("dangling");
+        let id = db.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+            site: "", series: "", episode: "", app: "x", title: "y" }, 1000);
+        db.close_dangling(2000);
+        let (end, dur): (i64, i64) = db.conn.lock().unwrap().query_row(
+            "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![id],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((end, dur), (2000, 1000));
     }
 
     #[test] fn limits_crud() {
