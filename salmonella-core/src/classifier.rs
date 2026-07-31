@@ -123,7 +123,7 @@ fn parse_browser_title(app: &str, title: &str) -> (String, String) {
         .map(|b| format!(" — {}", b.to_uppercase()))
         .find(|s| title.to_lowercase().ends_with(&s.to_lowercase()))
         .or_else(|| {
-            title.to_lowercase().find(" — ").and_then(|i| {
+            title.find(" — ").and_then(|i| {
                 let rest = &title[i + " — ".len()..];
                 let first = rest.split_whitespace().next().unwrap_or("");
                 let _ = app;
@@ -177,7 +177,7 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
     if is_app(app_name, VIDEO_PLAYERS) {
         let title = strip_suffix(window_title, &[" - mpv", " - VLC media player", " - Celluloid", " - Totem"]);
         let (series, episode) = parse_episode(&title);
-        let category = if !series.is_empty() { "media" } else { "media" };
+        let category = "media";
         return Enriched { event_type: "media", category, site: String::new(),
             series, episode, title_cleaned: title };
     }
@@ -237,6 +237,12 @@ mod tests {
         let e = enrich("org.mozilla.firefox.desktop", "YouTube — Mozilla Firefox");
         assert_eq!(e.site, "YouTube");
         assert_eq!(e.category, "media");
+    }
+
+    #[test] fn browser_title_with_case_fold_before_separator() {
+        let e = enrich("org.mozilla.firefox.desktop", "İstanbul - Müze — Mozilla Firefox");
+        assert_eq!(e.site, "Müze");
+        assert_eq!(e.title_cleaned(), "İstanbul");
     }
 
     #[test] fn episode_latin() {
