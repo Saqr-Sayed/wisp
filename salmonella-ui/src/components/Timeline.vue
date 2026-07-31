@@ -2,7 +2,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { formatTime, formatDuration, eventDuration, categoryColor, categoryLabel, search, type LogEntry } from '../lib/dbus'
 
-const props = defineProps<{ logs: LogEntry[]; loading: boolean; query: string }>()
+const props = defineProps<{ logs: LogEntry[]; loading: boolean; query: string; ribbon: [string, number][] }>()
 const emit = defineEmits<{ 'update:query': [string] }>()
 const selected = ref<LogEntry | null>(null)
 
@@ -34,8 +34,13 @@ onMounted(() => {
 <template>
   <div ref="cardEl" class="t-card card">
     <div class="t-head">
-      <b>الخط الزمني</b>
+      <b>سجل النشاط</b>
       <span class="t-count">{{ query ? results.length : logs.length }} حدثاً</span>
+    </div>
+    <div v-if="ribbon.length" class="t-ribbon" role="img" aria-label="فئات اليوم">
+      <div v-for="[cat, d] in ribbon" :key="'rib' + cat" class="rib-seg"
+        :style="{ flexGrow: Math.max(1, d), background: categoryColor(cat) }"
+        :title="categoryLabel(cat)"></div>
     </div>
     <input :value="query" @input="emit('update:query', ($event.target as HTMLInputElement).value)" class="t-search" placeholder="ابحث في سجل النشاط..." />
 
@@ -87,6 +92,8 @@ onMounted(() => {
 }
 .t-head b { font-size: 0.95rem; }
 .t-count { margin-right: auto; color: var(--ink-muted); font-size: 0.75rem; }
+.t-ribbon { display: flex; gap: 3px; padding: 0.55rem 1rem 0.15rem; overflow: hidden; }
+.rib-seg { height: 10px; border-radius: 4px; min-width: 3px; }
 .t-search {
   margin: 0.6rem 1rem 0.2rem;
   background: var(--surface-soft); border: 1px solid var(--border); border-radius: 999px;
