@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { formatTime, formatDuration, eventDuration, categoryColor, categoryLabel, search, type LogEntry } from '../lib/dbus'
 
-const props = defineProps<{ logs: LogEntry[]; loading: boolean }>()
-const total = computed(() => props.logs.reduce((s, l) => s + eventDuration(l), 0))
+const props = defineProps<{ logs: LogEntry[]; loading: boolean; query: string }>()
+const emit = defineEmits<{ 'update:query': [string] }>()
 const selected = ref<LogEntry | null>(null)
 
-const query = ref('')
 const results = ref<LogEntry[]>([])
 
-watch(query, async (q) => {
+watch(() => props.query, async (q) => {
   if (!q.trim()) { results.value = []; return }
   results.value = await search(q)
 })
@@ -23,7 +22,7 @@ function rowStyle(cat: string) { return { background: categoryColor(cat) } }
       <b>الخط الزمني</b>
       <span class="t-count">{{ query ? results.length : logs.length }} حدثاً</span>
     </div>
-    <input v-model="query" class="t-search" placeholder="ابحث في سجل النشاط..." />
+    <input :value="query" @input="emit('update:query', ($event.target as HTMLInputElement).value)" class="t-search" placeholder="ابحث في سجل النشاط..." />
 
     <div class="t-list">
       <template v-if="query">

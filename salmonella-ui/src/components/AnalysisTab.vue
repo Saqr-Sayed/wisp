@@ -2,19 +2,19 @@
 import { ref, computed, watch } from 'vue'
 import { getReport, getSeries, periodRange, formatDuration, categoryLabel, categoryColor, type Period, type LogEntry } from '../lib/dbus'
 
-const props = defineProps<{ logs: LogEntry[]; period: string; offset: number; loading: boolean }>()
-const groupBy = ref<'app' | 'category' | 'site' | 'series'>('app')
+const props = defineProps<{ logs: LogEntry[]; period: string; offset: number; loading: boolean; groupBy: 'app' | 'category' | 'site' | 'series' }>()
+const emit = defineEmits<{ 'update:groupBy': ['app' | 'category' | 'site' | 'series'] }>()
 const report = ref<[string, number][]>([])
 const series = ref<[string, string, number][]>([])
 const reportCat = ref<[string, number][]>([])
 const reportApp = ref<[string, number][]>([])
 
-watch(() => [props.period, props.offset, props.logs, groupBy.value] as const, async () => {
+watch(() => [props.period, props.offset, props.logs, props.groupBy] as const, async () => {
   const [from, to] = periodRange(props.period as Period, props.offset)
-  if (groupBy.value === 'series') {
+  if (props.groupBy === 'series') {
     series.value = await getSeries(from, to)
   } else {
-    report.value = await getReport(from, to, groupBy.value)
+    report.value = await getReport(from, to, props.groupBy)
   }
   reportCat.value = await getReport(from, to, 'category')
   reportApp.value = await getReport(from, to, 'app')
@@ -59,7 +59,7 @@ function label(g: string, key: string): string {
   <div class="analysis card">
     <div class="pill-group">
       <button v-for="g in (['app', 'category', 'site', 'series'] as const)" :key="g"
-        class="pill" :class="{ on: groupBy === g }" @click="groupBy = g">
+        class="pill" :class="{ on: groupBy === g }" @click="emit('update:groupBy', g)">
         {{ g === 'app' ? 'التطبيقات' : g === 'category' ? 'الفئات' : g === 'site' ? 'المواقع' : 'المسلسلات' }}
       </button>
     </div>

@@ -15,6 +15,8 @@ const limits = ref<[string, string, number][]>([])
 const nowSec = ref(Math.floor(Date.now() / 1000))
 const loading = ref(true)
 const error = ref(false)
+const groupBy = ref<'app' | 'category' | 'site' | 'series'>('app')
+const searchQuery = ref('')
 
 async function refresh() {
   try {
@@ -123,8 +125,8 @@ const periodTotal = computed(() => logs.value.reduce((s, l) => s + eventDuration
           <div class="ribbon card" v-else></div>
 
           <div class="cols">
-            <AnalysisTab class="a-col" :logs="logs" :period="period" :offset="offset" :loading="loading" />
-            <Timeline class="t-col" :logs="logs" :loading="loading" />
+            <AnalysisTab class="a-col" :logs="logs" :period="period" :offset="offset" :loading="loading" v-model:groupBy="groupBy" />
+            <Timeline class="t-col" :logs="logs" :loading="loading" v-model:query="searchQuery" />
           </div>
         </div>
 
@@ -162,7 +164,7 @@ const periodTotal = computed(() => logs.value.reduce((s, l) => s + eventDuration
 @keyframes banner-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 
 .dash { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding-bottom: 1rem; }
-.ribbon { display: flex; gap: 3px; padding: 8px 10px; flex-shrink: 0; }
+.ribbon { display: flex; gap: 3px; padding: 8px 10px; flex-shrink: 0; overflow: hidden; }
 .rib-seg { height: 14px; border-radius: 4px; min-width: 3px; }
 .cols { flex: 1; min-height: 0; display: flex; gap: 14px; }
 .a-col { flex: 3; min-width: 0; }

@@ -1,6 +1,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
+  color-scheme: light;
   --bg: #faf6ef;
   --surface: #ffffff;
   --surface-soft: #f3ede2;
@@ -26,6 +27,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg: #17130e;
   --surface: #241e17;
   --surface-soft: #201a12;
@@ -86,7 +88,7 @@ body {
 .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--ink); }
 .btn.ghost:hover { background: var(--surface-soft); }
 .btn:active { transform: translateY(0); }
-.btn:focus-visible, .icon-btn:focus-visible, input:focus-visible, select:focus-visible {
+.btn:focus-visible, .icon-btn:focus-visible, input:focus-visible, select:focus-visible, .pill:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 .icon-btn {

@@ -84,9 +84,10 @@ async function addOverride() {
           <input v-model.number="minutes" type="number" min="1" placeholder="دقيقة/يوم" />
           <button class="btn primary" @click="addLimit">إضافة</button>
         </div>
-        <div v-for="[t, k, m] in limits" :key="k + t" class="limit-row">
+        <div v-for="[t, k, m] in limits" :key="k + ':' + t" class="limit-row">
           <span class="lname">{{ label(t, k) }}</span>
           <span class="lused" :class="{ over: usedOf(k, t) > m }">{{ usedOf(k, t) }} / {{ m }} دقيقة</span>
+          <span v-if="usedOf(k, t) > m" class="over-label">تجاوزت!</span>
           <button class="btn ghost small" @click="removeLimit(t).then(() => emit('changed'))">حذف</button>
         </div>
         <div v-if="limits.length === 0" class="empty">⏳ لا حدود — أضف حداً يومياً لفئة أو تطبيق</div>
@@ -145,6 +146,7 @@ h3 { font-size: 0.95rem; margin-bottom: 0.7rem; }
 .lname { flex: 1; font-weight: 600; }
 .lused { color: var(--ink-muted); font-size: 0.85rem; }
 .lused.over { color: var(--danger); font-weight: 700; }
+.over-label { color: var(--danger); font-size: 0.75rem; font-weight: 700; }
 .btn.small { padding: 0.25rem 0.7rem; font-size: 0.75rem; }
 .theme-toggle { display: flex; gap: 5px; }
 .hint { color: var(--ink-muted); font-size: 0.8rem; margin-bottom: 0.7rem; }
