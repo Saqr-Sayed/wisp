@@ -134,7 +134,7 @@ const ribbonSegs = computed(() => {
           <div class="ribbon card" v-else></div>
 
           <div class="cols">
-            <AnalysisTab class="a-col" :logs="logs" :period="period" :offset="offset" :loading="loading" v-model:groupBy="groupBy" />
+            <AnalysisTab class="a-col" :logs="logs" :range="[0, 0]" :loading="loading" v-model:groupBy="groupBy" />
             <Timeline class="t-col" :logs="logs" :loading="loading" v-model:query="searchQuery" :ribbon="[]" />
           </div>
         </div>

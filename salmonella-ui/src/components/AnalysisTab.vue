@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { getReport, getSeries, periodRange, formatDuration, categoryLabel, categoryColor, type Period, type LogEntry } from '../lib/dbus'
+import { getReport, getSeries, formatDuration, categoryLabel, categoryColor, type LogEntry } from '../lib/dbus'
 
-const props = defineProps<{ logs: LogEntry[]; period: string; offset: number; loading: boolean; groupBy: 'app' | 'category' | 'site' | 'series' }>()
+const props = defineProps<{ logs: LogEntry[]; range: [number, number]; loading: boolean; groupBy: 'app' | 'category' | 'site' | 'series' }>()
 const emit = defineEmits<{ 'update:groupBy': ['app' | 'category' | 'site' | 'series'] }>()
 const report = ref<[string, number][]>([])
 const series = ref<[string, string, number][]>([])
 const reportCat = ref<[string, number][]>([])
 const reportApp = ref<[string, number][]>([])
 
-watch(() => [props.period, props.offset, props.logs, props.groupBy] as const, async () => {
-  const [from, to] = periodRange(props.period as Period, props.offset)
+watch(() => [props.range, props.logs, props.groupBy] as const, async () => {
+  const [from, to] = props.range
   if (props.groupBy === 'series') {
     series.value = await getSeries(from, to)
   } else {
@@ -24,7 +24,7 @@ const sortedCat = computed(() => [...reportCat.value].sort((a, b) => b[1] - a[1]
 const sortedApp = computed(() => [...reportApp.value].sort((a, b) => b[1] - a[1]))
 
 const totalSecs = computed(() => sortedCat.value.reduce((s, [, d]) => s + d, 0))
-const totalLabel = computed(() => (props.period === 'day' ? 'إجمالي اليوم' : 'إجمالي الفترة'))
+const totalLabel = computed(() => 'إجمالي اليوم')
 const topCat = computed(() => sortedCat.value[0])
 const topApp = computed(() => sortedApp.value[0])
 
