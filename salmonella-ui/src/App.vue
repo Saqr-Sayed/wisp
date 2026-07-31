@@ -5,11 +5,9 @@ import StatusCard from './components/StatusCard.vue'
 import SearchBar from './components/SearchBar.vue'
 import { getStatus, getTimeline, type LogEntry } from './lib/dbus'
 
-const status = ref<[boolean, number, string, string]>([false, 0, '', ''])
 const logs = ref<LogEntry[]>([])
 
 async function refresh() {
-  status.value = await getStatus()
   const now = Math.floor(Date.now() / 1000)
   const today = now - (now % 86400)
   logs.value = await getTimeline(today, now)
@@ -27,7 +25,7 @@ onUnmounted(() => window.clearInterval(timer))
   <div id="shell" class="rtl">
     <header><h1>Salmonella</h1></header>
     <main>
-      <StatusCard :status="status" :logs="logs" />
+      <StatusCard :logs="logs" />
       <SearchBar />
       <Timeline :logs="logs" />
     </main>

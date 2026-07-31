@@ -33,6 +33,19 @@ pub fn run_tracker_loop<F>(
         std::thread::sleep(Duration::from_secs(1));
         let (app, title) = backend.active_window();
 
+        // Don't track our own windows (the UI) — it would pollute the timeline
+        // and make "current activity" always show Salmonella. Close the ongoing
+        // entry so time spent in Salmonella stays an honest gap.
+        if app.to_lowercase().contains("salmonella") || title.eq_ignore_ascii_case("salmonella") {
+            if let Some(id) = current_log_id {
+                db.close_log(id, unix_now());
+                current_log_id = None;
+            }
+            prev_app.clear();
+            prev_title.clear();
+            continue;
+        }
+
         if (app != prev_app || title != prev_title) && !app.is_empty() {
             let now = unix_now();
 
