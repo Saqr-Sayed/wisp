@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::db::{Db, LogEvent};
-use crate::classifier::classify;
 
 /// Source of the currently focused window (app id/name, window title).
 pub trait WindowSource: Send {
@@ -53,11 +52,10 @@ pub fn run_tracker_loop<F>(
                 db.close_log(id, now);
             }
 
-            let et = classify(&app, &title);
-            let friendly = db.friendly_name(&app);
             let enriched = crate::classifier::enrich(&app, &title);
+            let friendly = db.friendly_name(&app);
             let log_event = LogEvent {
-                event_type: et,
+                event_type: enriched.event_type,
                 category: enriched.category,
                 friendly: &friendly,
                 site: &enriched.site,

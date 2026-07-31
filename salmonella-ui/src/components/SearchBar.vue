@@ -21,6 +21,7 @@ watch(query, async (q) => {
       <span class="time">{{ formatTime(r.start_time) }}</span>
       <span class="badge" :style="{ background: CATEGORY_COLORS[r.category] ?? '#555' }">{{ categoryLabel(r.category) }}</span>
       <span class="app">{{ r.friendly_name || r.app_name }}</span>
+      <span v-if="r.site" class="site">{{ r.site }}</span>
       <span class="title">{{ r.window_title }}</span>
       <span class="duration">{{ formatDuration(r.duration) }}</span>
     </div>
@@ -34,6 +35,7 @@ watch(query, async (q) => {
 .time { color: #888; min-width: 4rem; }
 .badge { padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.75rem; color: #fff; }
 .app { color: #aaa; }
+.site { color: #e94560; font-size: 0.85rem; }
 .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .duration { color: #888; min-width: 4rem; text-align: left; }
 </style>

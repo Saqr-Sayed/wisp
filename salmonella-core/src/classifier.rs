@@ -86,16 +86,17 @@ fn normalize_digits(s: &str) -> String {
 /// `الدرس ٢٦ - mpv` → `(series="الدرس", episode="26")`
 fn parse_episode(raw: &str) -> (String, String) {
     let t = normalize_digits(raw.trim());
-    // أولوية: SxxEyy ثم EPn ثم كلمة عربية (قد تكون الكلمة نفسها اسم المسلسل)
+    // أولوية: SxxEyy ثم EPn/Episode ثم نمط قديم 3x05 ثم كلمة عربية (قد تكون الكلمة نفسها اسم المسلسل)
     let patterns = [r"(?i)^(.+?)[\s.\-–—]*s(\d{1,2})e(\d{1,3})$",
-                    r"(?i)^(.+?)[\s.\-–—]*ep\.?\s*(\d{1,3})$",
+                    r"(?i)^(.+?)[\s.\-–—]*ep(?:\.|isode)?\s*(\d{1,3})$",
+                    r"^(?:(.+?)[\s.\-–—]*)?(\d{1,2})x(\d{1,3})$",
                     r"^(?:(.+?)[\s.\-–—]*)?(الحلقة|الدرس|الجزء)\s*(\d+)$"];
     for (i, pat) in patterns.iter().enumerate() {
         let re = regex::Regex::new(pat).unwrap();
         if let Some(c) = re.captures(&t) {
             let series = c.get(1).map(|m| m.as_str().trim().trim_end_matches('-').trim()).unwrap_or("")
                 .to_string();
-            if i == 2 {
+            if i == 3 {
                 // النمط العربي: الكلمة تعمل اسماً للمسلسل إن لم يسبقها اسم
                 let kw = c.get(2).map(|m| m.as_str()).unwrap_or("");
                 let ep = c.get(3).map(|m| m.as_str()).unwrap_or("");
@@ -267,6 +268,18 @@ mod tests {
         let e = enrich("vlc.desktop", "Show EP3 - VLC media player");
         assert_eq!(e.series, "Show");
         assert_eq!(e.episode, "3");
+    }
+
+    #[test] fn episode_word() {
+        let e = enrich("mpv.desktop", "Show episode 3");
+        assert_eq!(e.series, "Show");
+        assert_eq!(e.episode, "3");
+    }
+
+    #[test] fn episode_old_style() {
+        let e = enrich("mpv.desktop", "Show 3x05");
+        assert_eq!(e.series, "Show");
+        assert_eq!(e.episode, "3x5");
     }
 
     #[test] fn reading_pdf() {

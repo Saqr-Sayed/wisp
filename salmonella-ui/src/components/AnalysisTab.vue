@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { getReport, getSeries, periodRange, formatDuration, categoryLabel, type Period, type LogEntry } from '../lib/dbus'
 
 const props = defineProps<{ logs: LogEntry[]; period: string; offset: number }>()
@@ -19,6 +19,17 @@ watch(() => [props.period, props.offset, props.logs, groupBy.value], async () =>
 const total = ref(0)
 watch(report, r => { total.value = r.reduce((s, [, d]) => s + d, 0) })
 
+const seriesAgg = computed(() => {
+  const m = new Map<string, { eps: number; secs: number }>()
+  for (const [s, , secs] of series.value) {
+    const e = m.get(s) ?? { eps: 0, secs: 0 }
+    e.eps++
+    e.secs += secs
+    m.set(s, e)
+  }
+  return [...m.entries()].sort((a, b) => b[1].secs - a[1].secs)
+})
+
 function label(g: string, key: string): string {
   if (g === 'category') return categoryLabel(key)
   return key
@@ -35,8 +46,8 @@ function label(g: string, key: string): string {
     </div>
 
     <div v-if="groupBy === 'series'" class="series">
-      <div v-for="s in series" :key="s[0] + s[1]" class="srow">
-        <b>{{ s[0] }}</b> — حلقة {{ s[1] }} · <span>{{ formatDuration(s[2]) }}</span>
+      <div v-for="[s, a] in seriesAgg" :key="s" class="srow">
+        <b>{{ s }}</b> — {{ a.eps }} حلقة · <span>{{ formatDuration(a.secs) }}</span>
       </div>
       <div v-if="series.length === 0" class="empty">لا حلقات في هذه الفترة</div>
     </div>
