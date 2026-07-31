@@ -36,11 +36,11 @@ pub struct LogEvent<'a> {
 pub struct Db { conn: Mutex<Connection> }
 
 const NEW_COLUMNS: &[(&str, &str)] = &[
-    ("friendly_name", "TEXT"),
-    ("site", "TEXT"),
-    ("category", "TEXT"),
-    ("series", "TEXT"),
-    ("episode", "TEXT"),
+    ("friendly_name", "TEXT DEFAULT ''"),
+    ("site", "TEXT DEFAULT ''"),
+    ("category", "TEXT DEFAULT ''"),
+    ("series", "TEXT DEFAULT ''"),
+    ("episode", "TEXT DEFAULT ''"),
 ];
 
 impl Db {
@@ -244,6 +244,31 @@ mod tests {
         let path = std::env::temp_dir().join(format!("salmonella-{}-{}.db", std::process::id(), name));
         let _ = std::fs::remove_file(&path);
         Db::open(&path)
+    }
+
+    #[test] fn migration_preserves_old_rows() {
+        let path = std::env::temp_dir().join(format!("salmonella-{}-migrate-old.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL CHECK(event_type IN ('system','app','media')),
+                app_name TEXT NOT NULL DEFAULT '',
+                window_title TEXT NOT NULL DEFAULT '',
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                duration INTEGER
+            );
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time)
+                VALUES('app','org.mozilla.firefox.desktop','Old Title',1000);"
+        ).unwrap();
+        drop(old);
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, 999_999);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].window_title, "Old Title");
+        assert_eq!(rows[0].friendly_name, "");
     }
 
     #[test] fn migration_adds_columns_to_old_db() {
