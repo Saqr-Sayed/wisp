@@ -113,7 +113,7 @@ function dayTitle(i: number, day: Date): string {
 .w-chart { display: flex; align-items: flex-end; justify-content: center; width: 100%; }
 .w-bar {
   width: 70%; max-width: 26px; border-radius: 6px 6px 3px 3px; overflow: hidden;
-  display: flex; flex-direction: column; justify-content: flex-end;
+  display: flex; flex-direction: column; justify-content: flex-start;
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 70%, transparent), var(--accent));
 }
 .w-over {
