@@ -6,7 +6,6 @@ import Timeline from './components/Timeline.vue'
 import LimitsTab from './components/LimitsTab.vue'
 import SettingsTab from './components/SettingsTab.vue'
 import StatusCard from './components/StatusCard.vue'
-import SearchBar from './components/SearchBar.vue'
 import { getTimeline, getLimits, periodRange, eventDuration, categoryLabel, type Period, type LogEntry } from './lib/dbus'
 
 const tab = ref<'analysis' | 'timeline' | 'limits' | 'settings'>('analysis')
@@ -99,7 +98,6 @@ const todayLabel = computed(() => {
     </header>
     <main>
       <StatusCard :logs="logs" />
-      <SearchBar />
       <AnalysisTab v-if="tab === 'analysis'" :logs="logs" :period="period" :offset="offset" />
       <Timeline v-if="tab === 'timeline'" :logs="logs" />
       <LimitsTab v-if="tab === 'limits'" :limits="limits" :logs="todayLogs" @changed="refresh" />
