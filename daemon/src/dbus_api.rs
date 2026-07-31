@@ -48,6 +48,38 @@ impl ActivityTracker {
         self.db.search(query).iter().map(to_row).collect()
     }
 
+    async fn get_report(&self, from: i64, to: i64, group_by: &str) -> Vec<(String, i64)> {
+        self.db.get_report(from, to, group_by)
+    }
+
+    async fn get_series(&self, from: i64, to: i64) -> Vec<(String, String, i64)> {
+        self.db.get_series(from, to)
+    }
+
+    async fn get_limits(&self) -> Vec<(String, String, i64)> {
+        self.db.get_limits()
+    }
+
+    async fn set_limit(&self, target: &str, kind: &str, minutes: i64) {
+        self.db.set_limit(target, kind, minutes);
+    }
+
+    async fn remove_limit(&self, target: &str) {
+        self.db.remove_limit(target);
+    }
+
+    async fn get_name_overrides(&self) -> Vec<(String, String)> {
+        self.db.get_name_overrides()
+    }
+
+    async fn set_name_override(&self, app_id: &str, friendly: &str) {
+        self.db.set_name_override(app_id, friendly);
+    }
+
+    async fn remove_name_override(&self, app_id: &str) {
+        self.db.remove_name_override(app_id);
+    }
+
     #[zbus(signal)]
     async fn window_changed(&self, ctxt: &zbus::object_server::SignalContext<'_>, app_name: &str, window_title: &str, since: i64) -> zbus::Result<()>;
 }
