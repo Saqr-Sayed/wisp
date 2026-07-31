@@ -83,6 +83,15 @@ const todayLabel = computed(() => {
 })
 
 const periodTotal = computed(() => logs.value.reduce((s, l) => s + eventDuration(l), 0))
+
+const ribbonSegs = computed(() => {
+  const m = new Map<string, number>()
+  for (const l of logs.value) {
+    const cat = l.category || 'other'
+    m.set(cat, (m.get(cat) ?? 0) + eventDuration(l))
+  }
+  return [...m.entries()].sort((a, b) => b[1] - a[1])
+})
 </script>
 
 <template>
@@ -118,9 +127,9 @@ const periodTotal = computed(() => logs.value.reduce((s, l) => s + eventDuration
       <Transition name="view" mode="out-in">
         <div v-if="view === 'dashboard'" key="dash" class="dash">
           <div class="ribbon card" v-if="periodTotal > 0" role="img" aria-label="شريط الفترة">
-            <div v-for="l in logs" :key="'rib' + l.id" class="rib-seg"
-              :style="{ flexGrow: Math.max(1, eventDuration(l)), background: categoryColor(l.category) }"
-              :title="l.window_title"></div>
+            <div v-for="[cat, d] in ribbonSegs" :key="'rib' + cat" class="rib-seg"
+              :style="{ flexGrow: Math.max(1, d), background: categoryColor(cat) }"
+              :title="categoryLabel(cat)"></div>
           </div>
           <div class="ribbon card" v-else></div>
 
