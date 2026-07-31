@@ -151,6 +151,7 @@ const periodTotal = computed(() => logs.value.reduce((s, l) => s + eventDuration
   margin-top: 0.5rem; display: flex; align-items: center; gap: 0.8rem;
   background: var(--danger-soft); border: 1px solid var(--danger); border-radius: var(--radius-sm);
   padding: 0.45rem 0.9rem; color: var(--danger); font-size: 0.85rem; font-weight: 600;
+  animation: banner-in 200ms ease;
 }
 .over-banner {
   margin-top: 0.5rem;
