@@ -11,10 +11,10 @@
   "app": {
     "windows": [{
       "title": "Salmonella",
-      "width": 1000,
-      "height": 700,
-      "minWidth": 640,
-      "minHeight": 480,
+      "width": 1280,
+      "height": 800,
+      "minWidth": 900,
+      "minHeight": 600,
       "resizable": true
     }],
     "security": { "csp": null }
