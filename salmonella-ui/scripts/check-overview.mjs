@@ -2,7 +2,9 @@ import assert from 'node:assert'
 import { weekStart, weeksCount, sameDowSum, hourScale, weekRangeLabel } from '../src/lib/overview.ts'
 
 const DAY = 86400
-const nowSec = Math.floor(Date.now() / 1000)
+const now = new Date()
+now.setHours(12, 0, 0, 0) // راسِ على الظهر: لا يقطع بداية الأسبوع مهما كانت الساعة الحالية
+const nowSec = Math.floor(now.getTime() / 1000)
 
 const logs = [{ start_time: nowSec - 3600 }, { start_time: nowSec - 7200 }]
 assert.equal(weeksCount(logs), 1, 'a1: أسبوع واحد ببيانات يوم واحد')
