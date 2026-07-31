@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { search, formatTime, formatDuration, CATEGORY_COLORS, categoryLabel, type LogEntry } from '../lib/dbus'
+import { search, formatTime, formatDuration, categoryColor, categoryLabel, type LogEntry } from '../lib/dbus'
 
 const query = ref('')
 const results = ref<LogEntry[]>([])
@@ -19,7 +19,7 @@ watch(query, async (q) => {
     <input v-model="query" placeholder="ابحث في سجل النشاط..." />
     <div v-for="r in results" :key="'s' + r.id" class="entry">
       <span class="time">{{ formatTime(r.start_time) }}</span>
-      <span class="badge" :style="{ background: CATEGORY_COLORS[r.category] ?? '#555' }">{{ categoryLabel(r.category) }}</span>
+      <span class="badge" :style="{ background: categoryColor(r.category) }">{{ categoryLabel(r.category) }}</span>
       <span class="app">{{ r.friendly_name || r.app_name }}</span>
       <span v-if="r.site" class="site">{{ r.site }}</span>
       <span class="title">{{ r.window_title }}</span>

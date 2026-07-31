@@ -50,10 +50,10 @@ export function periodRange(period: Period, offset: number): [number, number] {
   return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)]
 }
 
-export const CATEGORY_COLORS: Record<string, string> = {
-  media: '#e94560', reading: '#4caf50', games: '#9c27b0',
-  entertainment: '#ff9800', productivity: '#2196f3',
-  browsing: '#607d8b', other: '#555555',
+/** لون الفئة من متغيرات CSS (يتبع السمة الحالية تلقائياً) */
+export function categoryColor(cat: string): string {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--cat-${cat}`).trim()
+  return v || '#8a7f6e'
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -71,7 +71,6 @@ export function eventDuration(e: LogEntry, nowSec = Math.floor(Date.now() / 1000
 export async function getTimeline(from: number, to: number): Promise<LogEntry[]> {
   return invoke('get_timeline', { from, to })
 }
-export async function getStatus() { return invoke('get_status') }
 export async function search(query: string): Promise<LogEntry[]> { return invoke('search', { query }) }
 export async function getReport(from: number, to: number, groupBy: string): Promise<[string, number][]> {
   return invoke('get_report', { from, to, groupBy })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { formatTime, formatDuration, eventDuration, CATEGORY_COLORS, categoryLabel, type LogEntry } from '../lib/dbus'
+import { formatTime, formatDuration, eventDuration, categoryColor, categoryLabel, type LogEntry } from '../lib/dbus'
 
 const props = defineProps<{ logs: LogEntry[] }>()
 const total = computed(() => props.logs.reduce((s, l) => s + eventDuration(l), 0))
@@ -12,7 +12,7 @@ const selected = ref<LogEntry | null>(null)
     <h2>الخط الزمني</h2>
     <div class="segments">
       <div v-for="l in logs" :key="l.id" class="seg" :title="l.window_title"
-        :style="{ width: (total ? eventDuration(l) / total * 100 : 0) + '%', background: CATEGORY_COLORS[l.category] ?? '#555' }"
+        :style="{ width: (total ? eventDuration(l) / total * 100 : 0) + '%', background: categoryColor(l.category) }"
         @click="selected = l"></div>
     </div>
     <div v-if="selected" class="detail">
@@ -24,7 +24,7 @@ const selected = ref<LogEntry | null>(null)
     <div v-if="logs.length === 0" class="empty">لا توجد أحداث في هذه الفترة</div>
     <div v-for="log in logs" :key="'r' + log.id" class="entry" @click="selected = log" :class="{ on: selected?.id === log.id }">
       <span class="time">{{ formatTime(log.start_time) }}</span>
-      <span class="badge" :style="{ background: CATEGORY_COLORS[log.category] ?? '#555' }">{{ categoryLabel(log.category) }}</span>
+      <span class="badge" :style="{ background: categoryColor(log.category) }">{{ categoryLabel(log.category) }}</span>
       <span class="app">{{ log.friendly_name || log.app_name }}</span>
       <span v-if="log.site" class="site">{{ log.site }}</span>
       <span class="title">{{ log.window_title }}</span>

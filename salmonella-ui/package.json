@@ -9,14 +9,15 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "vue": "^3.4",
+    "@fontsource/cairo": "^5.3.0",
     "@tauri-apps/api": "^2.0",
-    "@tauri-apps/plugin-shell": "^2.0"
+    "@tauri-apps/plugin-shell": "^2.0",
+    "vue": "^3.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0",
-    "vite": "^5.0",
     "@vitejs/plugin-vue": "^5.0",
-    "typescript": "^5.3"
+    "typescript": "^5.3",
+    "vite": "^5.0"
   }
 }
