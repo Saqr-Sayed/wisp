@@ -1,10 +1,18 @@
-mod db; mod classifier; mod wayland; mod dbus_api; mod systemd;
+mod dbus_api; mod gnome; mod systemd;
 
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use wayland::WlrBackend;
-use db::Db;
-use classifier::classify;
+
+use salmonella_core::db::Db;
+use salmonella_core::tracker::{run_tracker_loop, WindowSource};
+use gnome::GnomeBackend;
+
+fn pick_backend() -> Option<impl WindowSource> {
+    if let Some(g) = GnomeBackend::new() {
+        println!("GNOME Shell extension backend active");
+        return Some(g);
+    }
+    None
+}
 
 #[tokio::main]
 async fn main() {
@@ -15,36 +23,25 @@ async fn main() {
 
     let (_conn, tracker) = dbus_api::serve(db.clone()).await.unwrap();
 
-    if let Some(mut wl) = WlrBackend::new() {
-        println!("Wayland backend active");
-        let mut prev_app = String::new();
-        let mut prev_title = String::new();
-        let mut current_log_id: Option<i64> = None;
+    let Some(backend) = pick_backend() else {
+        eprintln!("No window backend available — enable the Salmonella GNOME extension");
+        std::future::pending::<()>().await;
+        return;
+    };
 
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let (app, title) = wl.active_window();
-
-            if (app != prev_app || title != prev_title) && !app.is_empty() {
-                let now = SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
-
-                if let Some(id) = current_log_id {
-                    db.close_log(id, now);
-                }
-
-                let et = classify(&app, &title);
-                current_log_id = Some(db.insert_log(et, &app, &title, now));
-
+    std::thread::spawn(move || {
+        let handle = tokio::runtime::Handle::current();
+        run_tracker_loop(db, backend, move |app, title, now| {
+            let handle = handle.clone();
+            let app = app.to_string();
+            let title = title.to_string();
+            handle.block_on(async {
                 if let Err(e) = tracker.emit_window_changed(&app, &title, now).await {
                     eprintln!("window_changed signal failed: {e}");
                 }
+            });
+        });
+    });
 
-                prev_app = app.clone();
-                prev_title = title.clone();
-            }
-        }
-    } else {
-        eprintln!("No Wayland compositor found");
-        std::future::pending::<()>().await;
-    }
+    std::future::pending::<()>().await;
 }

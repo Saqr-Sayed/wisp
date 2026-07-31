@@ -4,13 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rusqlite = { version = "0.31", features = ["bundled"] }
-dirs = "5"
+salmonella-core = { path = "../salmonella-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = "0.4"
 zbus = "4"
 tokio = { version = "1", features = ["full"] }
-wayland-client = "0.31"
-wayland-protocols-wlr = { version = "0.3", features = ["client"] }
-wayland-protocols = "0.32"
+dirs = "5"

@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use crate::db::{Db, LogEntry};
+use salmonella_core::db::{Db, LogEntry};
 use zbus::{interface, object_server::SignalContext, ConnectionBuilder};
 
 type Row = (i64, String, String, String, i64, i64, i64);

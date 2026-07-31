@@ -7,12 +7,18 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+salmonella-core = { path = "../../salmonella-core" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 zbus = "4"
-tokio = { version = "1", features = ["full"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
+winreg = "0.52"
 
 [features]
 default = ["custom-protocol"]
