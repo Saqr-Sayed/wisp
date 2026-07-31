@@ -13,6 +13,7 @@ const weekOffset = ref(0)
 const selectedDay = ref(startOfDay(new Date()))
 const dayLogs = ref<LogEntry[]>([])
 const weekLogs = ref<LogEntry[]>([])
+const historyLogs = ref<LogEntry[]>([])
 const limits = ref<[string, string, number][]>([])
 const nowSec = ref(Math.floor(Date.now() / 1000))
 const loading = ref(true)
@@ -28,6 +29,9 @@ async function refresh() {
     const [wFrom] = dayRange(weekDays.value[0])
     const [, wTo] = dayRange(weekDays.value[6])
     weekLogs.value = await getTimeline(wFrom, wTo)
+    const [hFrom] = dayRange(daysOfWeek(8)[0])
+    const [, hTo] = dayRange(daysOfWeek(1)[6])
+    historyLogs.value = await getTimeline(hFrom, hTo)
     limits.value = await getLimits()
     evaluateLimits()
     error.value = false
@@ -119,7 +123,7 @@ const ribbonSegs = computed(() => {
     <main>
       <Transition name="view" mode="out-in">
         <div v-if="view === 'dashboard'" key="dash" class="dash">
-          <WeekNav class="w-nav" :days="weekDays" :logs="weekLogs" :dayLogs="dayLogs" :selected="selectedDay" :limits="limits"
+          <WeekNav class="w-nav" :days="weekDays" :logs="weekLogs" :dayLogs="dayLogs" :selected="selectedDay" :limits="limits" :history="historyLogs"
             @select="selectDay" @prev="weekOffset++; refresh()"
             @next="weekOffset = Math.max(0, weekOffset - 1); refresh()" />
 
