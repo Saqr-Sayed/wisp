@@ -1,0 +1,5 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; direction: rtl; }
+#shell { max-width: 800px; margin: 0 auto; padding: 1rem; }
+header { text-align: center; padding: 1rem 0; }
+h1 { font-size: 1.5rem; color: #e94560; }

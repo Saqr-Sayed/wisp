@@ -33,6 +33,9 @@ impl ActivityTracker {
     async fn search(&self, query: &str) -> Vec<Row> {
         self.db.search(query).iter().map(to_row).collect()
     }
+
+    #[zbus(signal)]
+    async fn window_changed(&self, ctxt: &zbus::object_server::SignalContext<'_>, app_name: &str, window_title: &str, since: i64) -> zbus::Result<()>;
 }
 
 pub async fn serve(db: Arc<Db>) -> zbus::Result<()> {
