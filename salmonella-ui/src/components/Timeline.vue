@@ -1,14 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { getTimeline, formatTime, formatDuration, type LogEntry } from '../lib/dbus'
+import { formatTime, formatDuration, type LogEntry } from '../lib/dbus'
 
-const logs = ref<LogEntry[]>([])
-
-onMounted(async () => {
-  const now = Math.floor(Date.now() / 1000)
-  const today = now - (now % 86400)
-  logs.value = await getTimeline(today, now)
-})
+defineProps<{ logs: LogEntry[] }>()
 </script>
 
 <template>

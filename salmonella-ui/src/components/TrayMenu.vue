@@ -4,7 +4,7 @@
 
 <template>
   <div class="tray-placeholder">
-    <p>رقيب الكرتون</p>
+    <p>Salmonella</p>
   </div>
 </template>
 
