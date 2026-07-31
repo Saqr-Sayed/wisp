@@ -65,11 +65,15 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for WlBackend {
     fn event(
         _state: &mut WlBackend,
         _proxy: &ZwlrForeignToplevelManagerV1,
-        _event: zwlr_foreign_toplevel_manager_v1::Event,
+        event: zwlr_foreign_toplevel_manager_v1::Event,
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<WlBackend>,
     ) {
+        if matches!(event, zwlr_foreign_toplevel_manager_v1::Event::Finished) {
+            *STATE.app_id.lock().unwrap() = String::new();
+            *STATE.title.lock().unwrap() = String::new();
+        }
     }
 
     event_created_child!(WlBackend, ZwlrForeignToplevelManagerV1, [
@@ -80,7 +84,7 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for WlBackend {
 impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for WlBackend {
     fn event(
         _state: &mut WlBackend,
-        _proxy: &ZwlrForeignToplevelHandleV1,
+        proxy: &ZwlrForeignToplevelHandleV1,
         event: zwlr_foreign_toplevel_handle_v1::Event,
         _data: &(),
         _conn: &Connection,
@@ -92,6 +96,11 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for WlBackend {
             }
             zwlr_foreign_toplevel_handle_v1::Event::Title { title } => {
                 *STATE.title.lock().unwrap() = title;
+            }
+            zwlr_foreign_toplevel_handle_v1::Event::Closed => {
+                *STATE.app_id.lock().unwrap() = String::new();
+                *STATE.title.lock().unwrap() = String::new();
+                let _ = proxy.destroy();
             }
             _ => {}
         }

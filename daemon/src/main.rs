@@ -13,8 +13,7 @@ async fn main() {
 
     let db = Arc::new(Db::new());
 
-    let db_bus = db.clone();
-    tokio::spawn(async { dbus_api::serve(db_bus).await.unwrap() });
+    let (_conn, tracker) = dbus_api::serve(db.clone()).await.unwrap();
 
     if let Some(mut wl) = WlrBackend::new() {
         println!("Wayland backend active");
@@ -36,11 +35,16 @@ async fn main() {
                 let et = classify(&app, &title);
                 current_log_id = Some(db.insert_log(et, &app, &title, now));
 
+                if let Err(e) = tracker.emit_window_changed(&app, &title, now).await {
+                    eprintln!("window_changed signal failed: {e}");
+                }
+
                 prev_app = app.clone();
                 prev_title = title.clone();
             }
         }
     } else {
         eprintln!("No Wayland compositor found");
+        std::future::pending::<()>().await;
     }
 }

@@ -37,7 +37,8 @@ impl Db {
                 duration INTEGER
             );
             CREATE INDEX IF NOT EXISTS idx_start_time ON activity_logs(start_time);
-            CREATE INDEX IF NOT EXISTS idx_window_title ON activity_logs(window_title);"
+            CREATE INDEX IF NOT EXISTS idx_window_title ON activity_logs(window_title);
+            CREATE INDEX IF NOT EXISTS idx_event_type ON activity_logs(event_type);"
         ).expect("migrate");
     }
 

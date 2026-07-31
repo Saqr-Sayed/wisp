@@ -4,10 +4,19 @@ use serde::{Deserialize, Serialize};
 pub struct LogEntry {
     pub id: i64, pub event_type: String, pub app_name: String,
     pub window_title: String, pub start_time: i64,
-    pub end_time: i64, pub duration: i64,
+    pub end_time: Option<i64>, pub duration: Option<i64>,
 }
 
 type Row = (i64, String, String, String, i64, i64, i64);
+
+fn to_log_entry(r: Row) -> LogEntry {
+    LogEntry {
+        id: r.0, event_type: r.1, app_name: r.2,
+        window_title: r.3, start_time: r.4,
+        end_time: (r.5 >= 0).then_some(r.5),
+        duration: (r.6 >= 0).then_some(r.6),
+    }
+}
 
 #[tauri::command]
 async fn get_timeline(from: i64, to: i64) -> Result<Vec<LogEntry>, String> {
@@ -20,11 +29,7 @@ async fn get_timeline(from: i64, to: i64) -> Result<Vec<LogEntry>, String> {
         &(from, to),
     ).await.map_err(|e| e.to_string())?;
     let rows: Vec<Row> = reply.body().deserialize().map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|r| LogEntry {
-        id: r.0, event_type: r.1, app_name: r.2,
-        window_title: r.3, start_time: r.4,
-        end_time: r.5, duration: r.6,
-    }).collect())
+    Ok(rows.into_iter().map(to_log_entry).collect())
 }
 
 #[tauri::command]
@@ -52,11 +57,7 @@ async fn search(query: String) -> Result<Vec<LogEntry>, String> {
         &(query,),
     ).await.map_err(|e| e.to_string())?;
     let rows: Vec<Row> = reply.body().deserialize().map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(|r| LogEntry {
-        id: r.0, event_type: r.1, app_name: r.2,
-        window_title: r.3, start_time: r.4,
-        end_time: r.5, duration: r.6,
-    }).collect())
+    Ok(rows.into_iter().map(to_log_entry).collect())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
