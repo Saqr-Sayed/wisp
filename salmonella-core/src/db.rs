@@ -84,6 +84,13 @@ impl Db {
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS custom_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL CHECK(kind IN ('app','site')),
+                target TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                UNIQUE(kind, target)
             );"
         ).expect("migrate tables");
 
@@ -261,6 +268,42 @@ impl Db {
         }
         builtin_name(app).unwrap_or_else(|| short_name(app))
     }
+
+    pub fn list_custom_categories(&self) -> Vec<(i64, String, String, String)> {
+        self.conn.lock().unwrap()
+            .prepare("SELECT id, kind, target, display_name FROM custom_categories ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap().filter_map(|r| r.ok()).collect()
+    }
+
+    pub fn add_custom_category(&self, kind: &str, target: &str, display_name: &str) -> Option<i64> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO custom_categories(kind,target,display_name) VALUES(?1,?2,?3)
+             ON CONFLICT(kind,target) DO UPDATE SET display_name=excluded.display_name",
+            params![kind, target, display_name],
+        ).ok()?;
+        let id: i64 = conn.query_row(
+            "SELECT id FROM custom_categories WHERE kind=?1 AND target=?2",
+            params![kind, target], |r| r.get(0)
+        ).ok()?;
+        Some(id)
+    }
+
+    pub fn remove_custom_category(&self, id: i64) {
+        self.conn.lock().unwrap().execute("DELETE FROM custom_categories WHERE id=?1", params![id]).ok();
+    }
+
+    /// لو وُجدت قاعدة مخصصة مطابقة (kind=app, target=app أو kind=site, target=site)
+    /// فأعد اسم العرض، وإلا None.
+    pub fn match_custom_category(&self, kind: &str, target: &str) -> Option<String> {
+        if target.is_empty() { return None; }
+        self.conn.lock().unwrap().query_row(
+            "SELECT display_name FROM custom_categories WHERE kind=?1 AND target=?2 LIMIT 1",
+            params![kind, target], |r| r.get::<_, String>(0)
+        ).ok()
+    }
 }
 
 #[cfg(test)]
@@ -361,5 +404,18 @@ mod tests {
         assert_eq!(db.get_limits(), vec![("youtube".to_string(), "category".to_string(), 45)]);
         db.remove_limit("youtube");
         assert!(db.get_limits().is_empty());
+    }
+
+    #[test] fn custom_categories_crud() {
+        let db = tmp_db("custom");
+        assert!(db.list_custom_categories().is_empty());
+        let id = db.add_custom_category("app", "firefox", "برمجة").unwrap();
+        assert!(id > 0);
+        let id_dup = db.add_custom_category("app", "firefox", "برمجة أخرى").unwrap();
+        assert_eq!(id, id_dup, "نفس (kind, target) يُحدّث ولا يضيف");
+        assert_eq!(db.match_custom_category("app", "firefox").unwrap(), "برمجة أخرى");
+        assert!(db.match_custom_category("site", "").is_none());
+        db.remove_custom_category(id);
+        assert!(db.list_custom_categories().is_empty());
     }
 }

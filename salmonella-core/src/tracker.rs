@@ -56,9 +56,22 @@ pub fn run_tracker_loop<F>(
 
             let enriched = crate::classifier::enrich(&app, &title);
             let friendly = db.friendly_name(&app);
+            // تجاوز الفئة بقاعدة مخصصة (لو وُجدت)؛ القاعدة المخصصة لا تُلغي الفئات المدمجة
+            // سوى «other» — أي التطابق يُطبَّق فقط على الفئة الافتراضية.
+            let category: String = if enriched.category == "other" {
+                if let Some(name) = db.match_custom_category("app", &app) {
+                    name
+                } else if !enriched.site.is_empty() {
+                    db.match_custom_category("site", &enriched.site).unwrap_or_else(|| enriched.category.to_string())
+                } else {
+                    enriched.category.to_string()
+                }
+            } else {
+                enriched.category.to_string()
+            };
             let log_event = LogEvent {
                 event_type: enriched.event_type,
-                category: enriched.category,
+                category: &category,
                 friendly: &friendly,
                 site: &enriched.site,
                 series: &enriched.series,

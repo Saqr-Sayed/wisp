@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { getReport, getSeries, formatDuration, categoryLabel, categoryColor, type LogEntry } from '../lib/dbus'
+import { listCustomCategories, type CustomCategory } from '../lib/dbus'
 import { t } from '../lib/i18n'
 
 const props = defineProps<{ logs: LogEntry[]; range: [number, number]; loading: boolean; groupBy: 'app' | 'category' | 'site' | 'series' }>()
 const emit = defineEmits<{ 'update:groupBy': ['app' | 'category' | 'site' | 'series'] }>()
 const report = ref<[string, number][]>([])
 const series = ref<[string, string, number][]>([])
+
+const cats = ref<CustomCategory[]>([])
+onMounted(async () => { cats.value = await listCustomCategories() })
 
 watch(() => [props.range, props.logs, props.groupBy] as const, async () => {
   const [from, to] = props.range
@@ -47,6 +51,9 @@ function label(g: string, key: string): string {
         {{ g === 'app' ? t('analysis.pill.app') : g === 'category' ? t('analysis.pill.category') : g === 'site' ? t('analysis.pill.site') : t('analysis.pill.series') }}
       </button>
     </div>
+    <ul class="custom-cat-hint" v-if="cats.length">
+      <li v-for="c in cats" :key="c.id" :title="`${c.kind}: ${c.target}`">· {{ c.display_name }}</li>
+    </ul>
 
     <div v-if="loading && report.length === 0 && series.length === 0" class="bars">
       <div v-for="n in 3" :key="n" class="skel" style="height:1.1rem;width:100%"></div>
@@ -87,4 +94,6 @@ function label(g: string, key: string): string {
 .srow b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s-eps { color: var(--accent); font-weight: 700; font-size: 0.8rem; }
 .s-dur { color: var(--ink-muted); font-size: 0.8rem; }
+.custom-cat-hint { list-style: none; padding: 0.4rem 0 0; margin: 0; display: flex; gap: 0.6rem; flex-wrap: wrap; font-size: 0.78rem; color: var(--ink-muted); }
+.custom-cat-hint li { padding: 0.15rem 0.55rem; background: var(--surface-soft); border-radius: 6px; }
 </style>

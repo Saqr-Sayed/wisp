@@ -99,3 +99,16 @@ export async function getSetting(key: string): Promise<string> {
 export async function setSetting(key: string, value: string): Promise<void> {
   return invoke('set_setting', { key, value })
 }
+
+export interface CustomCategory { id: number; kind: 'app' | 'site'; target: string; display_name: string }
+
+export async function listCustomCategories(): Promise<CustomCategory[]> {
+  const rows = await invoke('list_custom_categories') as [number, string, string, string][]
+  return rows.map(([id, kind, target, display_name]) => ({ id, kind, target, display_name }))
+}
+export async function addCustomCategory(kind: 'app' | 'site', target: string, display_name: string) {
+  return invoke('add_custom_category', { kind, target, display_name })
+}
+export async function removeCustomCategory(id: number) {
+  return invoke('remove_custom_category', { id })
+}

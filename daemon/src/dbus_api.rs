@@ -91,6 +91,21 @@ impl ActivityTracker {
         Ok(())
     }
 
+    async fn list_custom_categories(&self) -> zbus::fdo::Result<Vec<(i64, String, String, String)>> {
+        Ok(self.db.list_custom_categories())
+    }
+
+    async fn add_custom_category(&self, kind: String, target: String, display_name: String)
+        -> zbus::fdo::Result<i64>
+    {
+        Ok(self.db.add_custom_category(&kind, &target, &display_name).unwrap_or(0))
+    }
+
+    async fn remove_custom_category(&self, id: i64) -> zbus::fdo::Result<bool> {
+        self.db.remove_custom_category(id);
+        Ok(true)
+    }
+
     #[zbus(signal)]
     async fn window_changed(&self, ctxt: &zbus::object_server::SignalContext<'_>, app_name: &str, window_title: &str, since: i64) -> zbus::Result<()>;
 }

@@ -6,6 +6,7 @@ import {
   getSetting, setSetting,
   type LogEntry,
 } from '../lib/dbus'
+import { listCustomCategories, addCustomCategory, removeCustomCategory, type CustomCategory } from '../lib/dbus'
 import { currentMode, setMode, type ThemeMode } from '../lib/theme'
 import { t, setLocale } from '../lib/i18n'
 
@@ -72,6 +73,26 @@ async function addOverride() {
   friendly.value = ''
   overrides.value = await getNameOverrides()
   emit('changed')
+}
+
+const cats = ref<CustomCategory[]>([])
+const catKind = ref<'app' | 'site'>('app')
+const catTarget = ref('')
+const catName = ref('')
+
+async function refreshCats() { cats.value = await listCustomCategories() }
+onMounted(refreshCats)
+
+async function addCat() {
+  if (!catTarget.value.trim() || !catName.value.trim()) return
+  await addCustomCategory(catKind.value, catTarget.value.trim(), catName.value.trim())
+  catTarget.value = ''; catName.value = ''
+  await refreshCats()
+}
+
+async function delCat(id: number) {
+  await removeCustomCategory(id)
+  await refreshCats()
 }
 </script>
 
@@ -142,6 +163,28 @@ async function addOverride() {
             <button class="btn ghost small" @click="removeNameOverride(id).then(() => overrides.value = overrides.value.filter(o => o[0] !== id)).then(() => emit('changed'))">{{ t('settings.overrides.delete') }}</button>
           </div>
           <div v-if="overrides.length === 0" class="empty">{{ t('settings.overrides.empty') }}</div>
+        </section>
+
+        <section class="card s-cats" id="sec-categories">
+          <h3>{{ t('settings.section.categories') }}</h3>
+          <p class="hint">{{ t('settings.categories.hint') }}</p>
+          <div class="add-form">
+            <select v-model="catKind">
+              <option value="app">{{ t('settings.categories.kind.app') }}</option>
+              <option value="site">{{ t('settings.categories.kind.site') }}</option>
+            </select>
+            <input v-model="catTarget" :placeholder="t('settings.categories.placeholder.target')" />
+            <input v-model="catName" :placeholder="t('settings.categories.placeholder.name')" />
+            <button class="btn primary" @click="addCat">{{ t('settings.categories.add') }}</button>
+          </div>
+          <div v-for="c in cats" :key="c.id" class="override-row">
+            <span class="pill small">{{ t('settings.categories.kind.' + c.kind) }}</span>
+            <code>{{ c.target }}</code>
+            <span class="arrow">→</span>
+            <b>{{ c.display_name }}</b>
+            <button class="btn ghost small" @click="delCat(c.id)">{{ t('settings.categories.delete') }}</button>
+          </div>
+          <div v-if="cats.length === 0" class="empty">{{ t('settings.categories.empty') }}</div>
         </section>
       </div>
     </div>
