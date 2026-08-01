@@ -82,6 +82,26 @@ impl ActivityTracker {
         self.db.remove_name_override(app_id);
     }
 
+    async fn get_known_apps(&self) -> Vec<(String, String)> {
+        self.db.get_known_apps()
+    }
+
+    async fn get_known_sites(&self) -> Vec<(String, String)> {
+        self.db.get_known_sites()
+    }
+
+    async fn get_site_overrides(&self) -> Vec<(String, String)> {
+        self.db.get_site_overrides()
+    }
+
+    async fn set_site_override(&self, site: String, friendly: String) {
+        self.db.set_site_override(&site, &friendly);
+    }
+
+    async fn remove_site_override(&self, site: String) {
+        self.db.remove_site_override(&site);
+    }
+
     async fn get_setting(&self, key: String) -> zbus::fdo::Result<String> {
         Ok(self.db.get_setting(&key).unwrap_or_default())
     }
