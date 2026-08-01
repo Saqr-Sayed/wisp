@@ -147,8 +147,9 @@ mod tests {
         db.ignore_target("app", "org.gnome.Ptyxis.desktop");
         db.ignore_target("site", "YouTube");
         let backend = FakeSource(vec![
-            ("org.mozilla.firefox.desktop".into(), "عنوان - YouTube — Mozilla Firefox".into()),
             ("code.desktop".into(), "main.rs".into()),
+            ("org.mozilla.firefox.desktop".into(), "عنوان - YouTube — Mozilla Firefox".into()),
+            ("org.gnome.Ptyxis.desktop".into(), "main.rs".into()),
         ], 0);
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
