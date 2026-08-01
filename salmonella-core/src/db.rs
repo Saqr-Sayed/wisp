@@ -16,6 +16,7 @@ pub struct LogEntry {
     pub duration: Option<i64>,
     pub friendly_name: String,
     pub site: String,
+    pub site_friendly: String,
     pub category: String,
     pub series: String,
     pub episode: String,
@@ -27,6 +28,7 @@ pub struct LogEvent<'a> {
     pub category: &'a str,
     pub friendly: &'a str,
     pub site: &'a str,
+    pub site_friendly: &'a str,
     pub series: &'a str,
     pub episode: &'a str,
     pub app: &'a str,
@@ -41,6 +43,7 @@ const NEW_COLUMNS: &[(&str, &str)] = &[
     ("category", "TEXT DEFAULT ''"),
     ("series", "TEXT DEFAULT ''"),
     ("episode", "TEXT DEFAULT ''"),
+    ("site_friendly", "TEXT DEFAULT ''"),
 ];
 
 impl Db {
@@ -91,6 +94,10 @@ impl Db {
                 target TEXT NOT NULL,
                 display_name TEXT NOT NULL,
                 UNIQUE(kind, target)
+            );
+            CREATE TABLE IF NOT EXISTS site_overrides (
+                site TEXT PRIMARY KEY,
+                friendly TEXT NOT NULL
             );"
         ).expect("migrate tables");
 
@@ -111,9 +118,9 @@ impl Db {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO activity_logs(event_type,app_name,window_title,start_time,
-                 friendly_name,site,category,series,episode)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-            params![e.event_type, e.app, e.title, t, e.friendly, e.site, e.category, e.series, e.episode],
+                 friendly_name,site,site_friendly,category,series,episode)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            params![e.event_type, e.app, e.title, t, e.friendly, e.site, e.site_friendly, e.category, e.series, e.episode],
         ).ok();
         conn.last_insert_rowid()
     }
@@ -140,15 +147,15 @@ impl Db {
     }
 
     const LOG_COLS: &'static str = "id,event_type,app_name,window_title,start_time,end_time,duration,
-        friendly_name,site,category,series,episode";
+        friendly_name,site,site_friendly,category,series,episode";
 
     fn row_to_entry(r: &rusqlite::Row) -> rusqlite::Result<LogEntry> {
         Ok(LogEntry {
             id: r.get(0)?, event_type: r.get(1)?, app_name: r.get(2)?,
             window_title: r.get(3)?, start_time: r.get(4)?,
             end_time: r.get(5)?, duration: r.get(6)?,
-            friendly_name: r.get(7)?, site: r.get(8)?, category: r.get(9)?,
-            series: r.get(10)?, episode: r.get(11)?,
+            friendly_name: r.get(7)?, site: r.get(8)?, site_friendly: r.get(9)?,
+            category: r.get(10)?, series: r.get(11)?, episode: r.get(12)?,
         })
     }
 
@@ -181,7 +188,7 @@ impl Db {
         let col = match group_by {
             "app" => "friendly_name",
             "category" => "category",
-            "site" => "site",
+            "site" => "COALESCE(NULLIF(site_friendly,''), site)",
             "series" => "series",
             _ => return Vec::new(),
         };
@@ -233,16 +240,97 @@ impl Db {
     }
 
     pub fn set_name_override(&self, app_id: &str, friendly: &str) {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "INSERT INTO name_overrides(app_id,friendly) VALUES(?1,?2)
-             ON CONFLICT(app_id) DO UPDATE SET friendly=?2",
-            params![app_id, friendly],
-        ).ok();
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO name_overrides(app_id,friendly) VALUES(?1,?2)
+                 ON CONFLICT(app_id) DO UPDATE SET friendly=?2",
+                params![app_id, friendly],
+            ).ok();
+        }
+        self.apply_app_rename(app_id, friendly);
     }
 
     pub fn remove_name_override(&self, app_id: &str) {
         self.conn.lock().unwrap().execute("DELETE FROM name_overrides WHERE app_id=?1", params![app_id]).ok();
+    }
+
+    /// تحديث رجعي لاسم العرض في صفوف السجل التاريخية.
+    fn apply_app_rename(&self, app: &str, friendly: &str) {
+        self.conn.lock().unwrap().execute(
+            "UPDATE activity_logs SET friendly_name=?2 WHERE app_name=?1",
+            params![app, friendly],
+        ).ok();
+    }
+
+    pub fn get_site_overrides(&self) -> Vec<(String, String)> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT site, friendly FROM site_overrides").unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+            .filter_map(|r| r.ok()).collect()
+    }
+
+    fn get_site_override(&self, site: &str) -> Option<String> {
+        self.conn.lock().unwrap().query_row(
+            "SELECT friendly FROM site_overrides WHERE site=?1", params![site], |r| r.get::<_, String>(0)
+        ).ok()
+    }
+
+    pub fn site_friendly_name(&self, site: &str) -> String {
+        self.get_site_override(site).unwrap_or_else(|| site.to_string())
+    }
+
+    pub fn set_site_override(&self, site: &str, friendly: &str) {
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO site_overrides(site,friendly) VALUES(?1,?2)
+                 ON CONFLICT(site) DO UPDATE SET friendly=?2",
+                params![site, friendly],
+            ).ok();
+        }
+        self.conn.lock().unwrap().execute(
+            "UPDATE activity_logs SET site_friendly=?2 WHERE site=?1",
+            params![site, friendly],
+        ).ok();
+    }
+
+    pub fn remove_site_override(&self, site: &str) {
+        self.conn.lock().unwrap().execute("DELETE FROM site_overrides WHERE site=?1", params![site]).ok();
+    }
+
+    /// كل التطبيقات المعروفة من السجل، الأحدث استخداماً أولاً.
+    /// (القائمة مشتقة من السجل — لا جدول تتبع منفصل؛ تتحدث بفتح تطبيقات جديدة.)
+    pub fn get_known_apps(&self) -> Vec<(String, String)> {
+        let apps: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare(
+                "SELECT app_name FROM activity_logs
+                 WHERE app_name != '' GROUP BY app_name ORDER BY MAX(start_time) DESC"
+            ).unwrap();
+            stmt.query_map([], |r| r.get::<_, String>(0)).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        apps.into_iter().map(|app| {
+            let disp = self.friendly_name(&app);
+            (app, disp)
+        }).collect()
+    }
+
+    pub fn get_known_sites(&self) -> Vec<(String, String)> {
+        let sites: Vec<String> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare(
+                "SELECT site FROM activity_logs
+                 WHERE site != '' GROUP BY site ORDER BY MAX(start_time) DESC"
+            ).unwrap();
+            stmt.query_map([], |r| r.get::<_, String>(0)).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        sites.into_iter().map(|site| {
+            let disp = self.site_friendly_name(&site);
+            (site, disp)
+        }).collect()
     }
 
     pub fn get_setting(&self, key: &str) -> Option<String> {
@@ -344,7 +432,7 @@ mod tests {
     #[test] fn migration_adds_columns_to_old_db() {
         let db = tmp_db("migrate");
         db.insert_log(&LogEvent { event_type: "app", category: "productivity", friendly: "الطرفية",
-            site: "", series: "", episode: "", app: "org.gnome.Ptyxis.desktop", title: "bash" }, 1000);
+            site: "", site_friendly: "", series: "", episode: "", app: "org.gnome.Ptyxis.desktop", title: "bash" }, 1000);
         let rows = db.get_timeline(0, 2000);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].friendly_name, "الطرفية");
@@ -365,7 +453,7 @@ mod tests {
         let now = 10_000;
         for (app, friendly, dur_sec) in [("a", "تطبيق أ", 60), ("a", "تطبيق أ", 30), ("b", "تطبيق ب", 10)] {
             let id = db.insert_log(&LogEvent { event_type: "app", category: "other", friendly,
-                site: "", series: "", episode: "", app, title: "t" }, now);
+                site: "", site_friendly: "", series: "", episode: "", app, title: "t" }, now);
             db.close_log(id, now + dur_sec);
         }
         let r = db.get_report(0, 999_999, "app");
@@ -375,7 +463,7 @@ mod tests {
     #[test] fn report_groups_by_category_and_series() {
         let db = tmp_db("report2");
         let id = db.insert_log(&LogEvent { event_type: "media", category: "media", friendly: "مشغل",
-            site: "", series: "الدرس", episode: "26", app: "mpv", title: "الدرس 26" }, 1000);
+            site: "", site_friendly: "", series: "الدرس", episode: "26", app: "mpv", title: "الدرس 26" }, 1000);
         db.close_log(id, 1100);
         let cat = db.get_report(0, 999_999, "category");
         assert_eq!(cat, vec![("media".to_string(), 100)]);
@@ -388,7 +476,7 @@ mod tests {
     #[test] fn close_dangling_closes_open_rows() {
         let db = tmp_db("dangling");
         let id = db.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
-            site: "", series: "", episode: "", app: "x", title: "y" }, 1000);
+            site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
         db.close_dangling(2000);
         let (end, dur): (i64, i64) = db.conn.lock().unwrap().query_row(
             "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![id],
@@ -417,5 +505,58 @@ mod tests {
         assert!(db.match_custom_category("site", "").is_none());
         db.remove_custom_category(id);
         assert!(db.list_custom_categories().is_empty());
+    }
+
+    #[test] fn site_overrides_crud() {
+        let db = tmp_db("siteov");
+        assert!(db.get_site_overrides().is_empty());
+        assert_eq!(db.site_friendly_name("youtube.com"), "youtube.com");
+        db.set_site_override("youtube.com", "يوتيوب");
+        assert_eq!(db.site_friendly_name("youtube.com"), "يوتيوب");
+        db.set_site_override("youtube.com", "يوتيوب 2");
+        assert_eq!(db.site_friendly_name("youtube.com"), "يوتيوب 2", "التحديث يغيّر الاسم");
+        db.remove_site_override("youtube.com");
+        assert_eq!(db.site_friendly_name("youtube.com"), "youtube.com");
+        assert!(db.get_site_overrides().is_empty());
+    }
+
+    #[test] fn rename_app_is_retroactive() {
+        let db = tmp_db("retroapp");
+        let e = LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+            site: "", site_friendly: "", series: "", episode: "", app: "org.mozilla.firefox.desktop", title: "t" };
+        let id = db.insert_log(&e, 1000);
+        db.close_log(id, 1100);
+        assert_eq!(db.get_timeline(0, 9999)[0].friendly_name, "فايرفوكس");
+        db.set_name_override("org.mozilla.firefox.desktop", "متصفحي");
+        assert_eq!(db.get_timeline(0, 9999)[0].friendly_name, "متصفحي", "الصفوف القديمة تتحدث");
+    }
+
+    #[test] fn rename_site_is_retroactive_and_groups() {
+        let db = tmp_db("retrosite");
+        let e = LogEvent { event_type: "app", category: "media", friendly: "فايرفوكس",
+            site: "youtube.com", site_friendly: "youtube.com", series: "", episode: "",
+            app: "org.mozilla.firefox.desktop", title: "t" };
+        let id = db.insert_log(&e, 1000);
+        db.close_log(id, 1100);
+        db.set_site_override("youtube.com", "يوتيوب");
+        assert_eq!(db.get_timeline(0, 9999)[0].site_friendly, "يوتيوب");
+        let rep = db.get_report(0, 9999, "site");
+        assert_eq!(rep, vec![("يوتيوب".to_string(), 100)], "التقرير يجمع تحت الاسم الجديد");
+    }
+
+    #[test] fn get_known_apps_derives_distinct() {
+        let db = tmp_db("known");
+        let e = LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+            site: "", site_friendly: "", series: "", episode: "", app: "org.mozilla.firefox.desktop", title: "t" };
+        let id = db.insert_log(&e, 1000);
+        db.close_log(id, 1100);
+        let id2 = db.insert_log(&e, 2000);
+        db.close_log(id2, 2100);
+        let known = db.get_known_apps();
+        assert_eq!(known.len(), 1, "التطبيق نفسه لا يتكرر");
+        assert_eq!(known[0].0, "org.mozilla.firefox.desktop");
+        assert_eq!(known[0].1, "فايرفوكس");
+        let sites = db.get_known_sites();
+        assert!(sites.is_empty(), "لا مواقع فارغة");
     }
 }

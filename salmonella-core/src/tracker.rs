@@ -56,6 +56,7 @@ pub fn run_tracker_loop<F>(
 
             let enriched = crate::classifier::enrich(&app, &title);
             let friendly = db.friendly_name(&app);
+            let site_friendly = db.site_friendly_name(&enriched.site);
             // تجاوز الفئة بقاعدة مخصصة (لو وُجدت)؛ القاعدة المخصصة لا تُلغي الفئات المدمجة
             // سوى «other» — أي التطابق يُطبَّق فقط على الفئة الافتراضية.
             let category: String = if enriched.category == "other" {
@@ -74,6 +75,7 @@ pub fn run_tracker_loop<F>(
                 category: &category,
                 friendly: &friendly,
                 site: &enriched.site,
+                site_friendly: &site_friendly,
                 series: &enriched.series,
                 episode: &enriched.episode,
                 app: &app,
