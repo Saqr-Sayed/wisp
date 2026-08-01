@@ -112,3 +112,20 @@ export async function addCustomCategory(kind: 'app' | 'site', target: string, di
 export async function removeCustomCategory(id: number) {
   return invoke('remove_custom_category', { id })
 }
+
+export interface KnownApp { id: string; display: string; overridden: boolean }
+export interface KnownSite { site: string; display: string; overridden: boolean }
+
+export async function getKnownApps(): Promise<KnownApp[]> {
+  const rows = await invoke('get_known_apps') as [string, string][]
+  const overrides = new Map(await getNameOverrides())
+  return rows.map(([id, display]) => ({ id, display, overridden: overrides.has(id) }))
+}
+export async function getKnownSites(): Promise<KnownSite[]> {
+  const rows = await invoke('get_known_sites') as [string, string][]
+  const overrides = new Map(await getSiteOverrides())
+  return rows.map(([site, display]) => ({ site, display, overridden: overrides.has(site) }))
+}
+export async function getSiteOverrides(): Promise<[string, string][]> { return invoke('get_site_overrides') }
+export async function setSiteOverride(site: string, friendly: string) { return invoke('set_site_override', { site, friendly }) }
+export async function removeSiteOverride(site: string) { return invoke('remove_site_override', { site }) }
