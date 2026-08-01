@@ -102,6 +102,18 @@ impl ActivityTracker {
         self.db.remove_site_override(&site);
     }
 
+    async fn list_ignored(&self) -> Vec<(String, String)> {
+        self.db.list_ignored()
+    }
+
+    async fn ignore_target(&self, kind: String, target: String) {
+        self.db.ignore_target(&kind, &target);
+    }
+
+    async fn unignore_target(&self, kind: String, target: String) {
+        self.db.unignore_target(&kind, &target);
+    }
+
     async fn get_setting(&self, key: String) -> zbus::fdo::Result<String> {
         Ok(self.db.get_setting(&key).unwrap_or_default())
     }

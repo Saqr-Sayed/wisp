@@ -33,6 +33,7 @@ async fn main() {
     systemd::install();
 
     let db = Arc::new(Db::new());
+    db.backfill_sites();
 
     let (_conn, tracker) = dbus_api::serve(db.clone()).await.unwrap();
 
