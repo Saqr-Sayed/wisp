@@ -116,7 +116,25 @@ fn parse_episode(raw: &str) -> (String, String) {
     (String::new(), String::new())
 }
 
-fn is_browser_app(app: &str) -> bool { is_app(app, BROWSERS) }
+pub fn is_browser_app(app: &str) -> bool { is_app(app, BROWSERS) }
+
+/// عناوين لا تمثل مواقع — صفحة البداية، التبويب الجديد، أخطاء المتصفح، وأسماء المتصفحات نفسها.
+const JUNK_SITES: &[&str] = &[
+    "new tab", "new page", "home", "plank", "problem loading page",
+    "mozilla firefox", "google chrome", "chromium", "brave", "microsoft edge", "tor",
+    "calculator",
+];
+
+pub fn is_junk_site(site: &str) -> bool {
+    let s = site.trim().to_lowercase();
+    JUNK_SITES.iter().any(|j| s == *j)
+}
+
+/// يزيل علامات الاتجاه الثنائية (RLM/LRM وما شابهها) من طرفي النص.
+fn trim_bidi(s: &str) -> &str {
+    s.trim_matches(['\u{200E}', '\u{200F}', '\u{202A}', '\u{202B}', '\u{202C}',
+                    '\u{202D}', '\u{202E}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}'])
+}
 
 /// `عنوان - يوتيوب — Mozilla Firefox` → (site="YouTube", title="عنوان")
 fn parse_browser_title(app: &str, title: &str) -> (String, String) {
@@ -136,10 +154,23 @@ fn parse_browser_title(app: &str, title: &str) -> (String, String) {
         Some(s) => title[..title.len() - s.len()].trim().to_string(),
         None => title.trim().to_string(),
     };
-    match stripped.rfind(" - ") {
-        Some(i) => (stripped[i + 3..].trim().to_string(), stripped[..i].trim().to_string()),
-        None => (stripped.clone(), String::new()),
-    }
+    let stripped = trim_bidi(&stripped);
+    // آخر فاصل بين " - " و " / " و " \ " (تنسيق تويتر: "منشور \ X")
+    let sep = [" - ", " / ", " \\ "].iter()
+        .filter_map(|s| stripped.rfind(s))
+        .max();
+    let (site, title) = match sep {
+        Some(i) => {
+            let site = stripped[i + 3..].trim();
+            // ponytail: مقطع أخير طويل = منشور إعادة تغريد يعرض النص كاملاً؛
+            // نرجع للمقطع الأول (X \ محتوى طويل → X). عتبة 40 حرفاً، غيّرها عند الحاجة.
+            let site = if site.len() > 40 { &stripped[..i] } else { site };
+            (site.to_string(), stripped[..i].trim().to_string())
+        }
+        None => (stripped.to_string(), String::new()),
+    };
+    let site = if is_junk_site(&site) { String::new() } else { site.to_string() };
+    (site, title)
 }
 
 fn builtin_category_for_site(site: &str) -> &'static str {
@@ -244,6 +275,38 @@ mod tests {
         let e = enrich("org.mozilla.firefox.desktop", "İstanbul - Müze — Mozilla Firefox");
         assert_eq!(e.site, "Müze");
         assert_eq!(e.title_cleaned(), "İstanbul");
+    }
+
+    #[test] fn junk_title_is_not_a_site() {
+        assert_eq!(enrich("org.mozilla.firefox.desktop", "Calculator — Mozilla Firefox").site, "");
+        assert_eq!(enrich("org.mozilla.firefox.desktop", "New Tab — Mozilla Firefox").site, "");
+        assert_eq!(enrich("org.mozilla.firefox.desktop", "Problem loading page").site, "");
+        assert_eq!(enrich("org.mozilla.firefox.desktop", "Home / X — Mozilla Firefox").site, "X");
+    }
+
+    #[test] fn twitter_slash_separator() {
+        assert_eq!(enrich("org.mozilla.firefox.desktop", "منشور ما / X — Mozilla Firefox").site, "X");
+        assert_eq!(enrich("org.mozilla.firefox.desktop", "منشور ما \\ X — Mozilla Firefox").site, "X");
+        assert_eq!(enrich("org.mozilla.firefox.desktop", "منشور ما - X — Mozilla Firefox").site, "X");
+    }
+
+    #[test] fn bidi_marks_trimmed_from_site() {
+        let e = enrich("org.mozilla.firefox.desktop", "\u{200F}Google Gemini — Mozilla Firefox");
+        assert_eq!(e.site, "Google Gemini");
+    }
+
+    #[test] fn long_twitter_quote_falls_back_to_first_segment() {
+        let e = enrich("org.mozilla.firefox.desktop",
+            "X \\ DeepSeek على X: \"🚀 Official API is now LIVE in public beta\" — Mozilla Firefox");
+        assert_eq!(e.site, "X");
+    }
+
+    #[test] fn junk_site_list() {
+        assert!(is_junk_site("New Tab"));
+        assert!(is_junk_site("plank"));
+        assert!(is_junk_site("Mozilla Firefox"));
+        assert!(is_junk_site("Calculator"));
+        assert!(!is_junk_site("YouTube"));
     }
 
     #[test] fn episode_latin() {
