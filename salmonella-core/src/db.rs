@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::classifier::{builtin_name, short_name};
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, PartialEq)]
 pub struct LogEntry {
     pub id: i64,
     pub event_type: String,
@@ -81,7 +81,7 @@ impl Db {
             );
             CREATE TABLE IF NOT EXISTS limits (
                 target TEXT PRIMARY KEY,
-                kind TEXT NOT NULL CHECK(kind IN ('app','category')),
+                kind TEXT NOT NULL CHECK(kind IN ('app','category','site')),
                 daily_minutes INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS settings (
@@ -95,11 +95,33 @@ impl Db {
                 display_name TEXT NOT NULL,
                 UNIQUE(kind, target)
             );
+            CREATE TABLE IF NOT EXISTS ignored (
+                kind TEXT NOT NULL,
+                target TEXT NOT NULL,
+                PRIMARY KEY (kind, target)
+            );
             CREATE TABLE IF NOT EXISTS site_overrides (
                 site TEXT PRIMARY KEY,
                 friendly TEXT NOT NULL
             );"
         ).expect("migrate tables");
+
+        // ترحيل: limits القديمة تحظر kind='site' (SQLite لا يعدّل CHECK — إعادة بناء الجدول)
+        let limits_sql: String = conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='limits'",
+            [], |r| r.get(0)).unwrap_or_default();
+        if limits_sql.contains("('app','category')") {
+            conn.execute_batch(
+                "ALTER TABLE limits RENAME TO limits_old;
+                 CREATE TABLE limits (
+                    target TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL CHECK(kind IN ('app','category','site')),
+                    daily_minutes INTEGER NOT NULL
+                 );
+                 INSERT INTO limits SELECT target, kind, daily_minutes FROM limits_old;
+                 DROP TABLE limits_old;"
+            ).expect("rebuild limits table");
+        }
 
         // SQLite لا يدعم ADD COLUMN IF NOT EXISTS — فحص يدوي
         let existing: Vec<String> = conn.prepare("PRAGMA table_info(activity_logs)")
@@ -299,6 +321,51 @@ impl Db {
         self.conn.lock().unwrap().execute("DELETE FROM site_overrides WHERE site=?1", params![site]).ok();
     }
 
+    pub fn is_ignored(&self, kind: &str, target: &str) -> bool {
+        if target.is_empty() { return false; }
+        self.conn.lock().unwrap().query_row(
+            "SELECT 1 FROM ignored WHERE kind=?1 AND target=?2", params![kind, target],
+            |_| Ok(())).is_ok()
+    }
+
+    pub fn ignore_target(&self, kind: &str, target: &str) {
+        self.conn.lock().unwrap().execute(
+            "INSERT OR IGNORE INTO ignored(kind,target) VALUES(?1,?2)",
+            params![kind, target]).ok();
+    }
+
+    pub fn unignore_target(&self, kind: &str, target: &str) {
+        self.conn.lock().unwrap().execute(
+            "DELETE FROM ignored WHERE kind=?1 AND target=?2",
+            params![kind, target]).ok();
+    }
+
+    pub fn list_ignored(&self) -> Vec<(String, String)> {
+        self.conn.lock().unwrap()
+            .prepare("SELECT kind, target FROM ignored ORDER BY kind, target").unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+            .filter_map(|r| r.ok()).collect()
+    }
+
+    /// إعادة اشتقاق الموقع للصفوف القديمة بعد تحسين extractor —
+    /// للمتصفحات فقط، الفئة لا تتغير، النتيجة خاملة عند التكرار.
+    pub fn backfill_sites(&self) {
+        let rows: Vec<(i64, String, String)> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT id, app_name, window_title FROM activity_logs").unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        for (id, app, title) in rows {
+            if !crate::classifier::is_browser_app(&app) { continue; }
+            let e = crate::classifier::enrich(&app, &title);
+            let site_friendly = self.site_friendly_name(&e.site);
+            self.conn.lock().unwrap().execute(
+                "UPDATE activity_logs SET site=?2, site_friendly=?3 WHERE id=?1",
+                params![id, e.site, site_friendly]).ok();
+        }
+    }
+
     /// كل التطبيقات المعروفة من السجل، الأحدث استخداماً أولاً.
     /// (القائمة مشتقة من السجل — لا جدول تتبع منفصل؛ تتحدث بفتح تطبيقات جديدة.)
     pub fn get_known_apps(&self) -> Vec<(String, String)> {
@@ -311,26 +378,32 @@ impl Db {
             stmt.query_map([], |r| r.get::<_, String>(0)).unwrap()
                 .filter_map(|r| r.ok()).collect()
         };
-        apps.into_iter().map(|app| {
-            let disp = self.friendly_name(&app);
-            (app, disp)
-        }).collect()
+        apps.into_iter()
+            .filter(|app| !self.is_ignored("app", app))
+            .map(|app| {
+                let disp = self.friendly_name(&app);
+                (app, disp)
+            }).collect()
     }
 
     pub fn get_known_sites(&self) -> Vec<(String, String)> {
+        // دمج بحروف متشابهة (X و x) مع إبقاء أحدث استخدام؛ استبعاد المهملات والمُستبعدة
         let sites: Vec<String> = {
             let conn = self.conn.lock().unwrap();
             let mut stmt = conn.prepare(
                 "SELECT site FROM activity_logs
-                 WHERE site != '' GROUP BY site ORDER BY MAX(start_time) DESC"
+                 WHERE site != '' GROUP BY lower(site) ORDER BY MAX(start_time) DESC"
             ).unwrap();
             stmt.query_map([], |r| r.get::<_, String>(0)).unwrap()
                 .filter_map(|r| r.ok()).collect()
         };
-        sites.into_iter().map(|site| {
-            let disp = self.site_friendly_name(&site);
-            (site, disp)
-        }).collect()
+        sites.into_iter()
+            .filter(|s| !crate::classifier::is_junk_site(s))
+            .filter(|s| !self.is_ignored("site", s))
+            .map(|site| {
+                let disp = self.site_friendly_name(&site);
+                (site, disp)
+            }).collect()
     }
 
     pub fn get_setting(&self, key: &str) -> Option<String> {
@@ -558,5 +631,98 @@ mod tests {
         assert_eq!(known[0].1, "فايرفوكس");
         let sites = db.get_known_sites();
         assert!(sites.is_empty(), "لا مواقع فارغة");
+    }
+
+    #[test] fn limits_site_kind() {
+        let db = tmp_db("limitsite");
+        db.set_limit("youtube.com", "site", 30);
+        assert_eq!(db.get_limits(), vec![("youtube.com".to_string(), "site".to_string(), 30)]);
+        db.remove_limit("youtube.com");
+        assert!(db.get_limits().is_empty());
+    }
+
+    #[test] fn limits_migration_to_site_kind() {
+        let path = std::env::temp_dir().join(format!("salmonella-{}-limmig.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE limits (
+                target TEXT PRIMARY KEY,
+                kind TEXT NOT NULL CHECK(kind IN ('app','category')),
+                daily_minutes INTEGER NOT NULL
+             );
+             INSERT INTO limits VALUES('media','category',45);"
+        ).unwrap();
+        drop(old);
+        let db = Db::open(&path);
+        assert_eq!(db.get_limits(), vec![("media".to_string(), "category".to_string(), 45)], "الصفوف القديمة تُحفظ");
+        db.set_limit("youtube.com", "site", 30);
+        assert_eq!(db.get_limits().len(), 2, "kind='site' يعمل بعد الترحيل");
+    }
+
+    #[test] fn ignored_crud_and_filtering() {
+        let db = tmp_db("ignored");
+        let e = LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+            site: "x", site_friendly: "x", series: "", episode: "",
+            app: "org.mozilla.firefox.desktop", title: "t" };
+        let id = db.insert_log(&e, 1000);
+        db.close_log(id, 1100);
+        assert_eq!(db.get_known_apps().len(), 1);
+        assert_eq!(db.get_known_sites().len(), 1);
+        db.ignore_target("app", "org.mozilla.firefox.desktop");
+        db.ignore_target("site", "x");
+        assert!(db.is_ignored("app", "org.mozilla.firefox.desktop"));
+        assert!(db.is_ignored("site", "x"));
+        assert!(!db.is_ignored("site", "y"));
+        assert!(db.get_known_apps().is_empty(), "التطبيق المُستبعد لا يظهر");
+        assert!(db.get_known_sites().is_empty(), "الموقع المُستبعد لا يظهر");
+        assert_eq!(db.list_ignored().len(), 2);
+        db.unignore_target("app", "org.mozilla.firefox.desktop");
+        db.unignore_target("site", "x");
+        assert_eq!(db.get_known_apps().len(), 1);
+        assert_eq!(db.get_known_sites().len(), 1);
+    }
+
+    #[test] fn known_sites_dedup_case_insensitive() {
+        let db = tmp_db("sitededup");
+        for (i, s) in ["X", "x", "X / Home"].iter().enumerate() {
+            let id = db.insert_log(&LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+                site: s, site_friendly: s, series: "", episode: "",
+                app: "org.mozilla.firefox.desktop", title: "t" }, 1000 + i as i64);
+            db.close_log(id, 1100 + i as i64);
+        }
+        let known = db.get_known_sites();
+        assert_eq!(known.len(), 2, "X و x يُدمجان، و X / Home تبقى");
+    }
+
+    #[test] fn backfill_reparses_browser_rows_and_is_idempotent() {
+        let db = tmp_db("backfill");
+        let junk = db.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "فايرفوكس",
+            site: "Calculator", site_friendly: "Calculator", series: "", episode: "",
+            app: "org.mozilla.firefox.desktop", title: "Calculator — Mozilla Firefox" }, 3000);
+        db.close_log(junk, 3100);
+        let old_fmt = db.insert_log(
+            &LogEvent { event_type: "app", category: "other", friendly: "فايرفوكس",
+                site: "X \\ DeepSeek على X: \"طويل جداً جداً من النشر\"",
+                site_friendly: "X \\ DeepSeek على X: \"طويل جداً جداً من النشر\"",
+                series: "", episode: "",
+                app: "org.mozilla.firefox.desktop",
+                title: "X \\ DeepSeek على X: \"طويل جداً جداً من النشر\" — Mozilla Firefox" }, 2000);
+        db.close_log(old_fmt, 2100);
+        let non_browser = db.insert_log(&LogEvent { event_type: "app", category: "productivity", friendly: "",
+            site: "whatever", site_friendly: "whatever", series: "", episode: "",
+            app: "org.gnome.Ptyxis.desktop", title: "bash" }, 1000);
+        db.close_log(non_browser, 1100);
+
+        db.backfill_sites();
+        let after = db.get_timeline(0, 999_999);
+        assert_eq!(after[0].site, "", "عنوان سلة يُنظَّف");
+        assert_eq!(after[1].site, "X", "عنوان قديم الطراز يُعاد تحليله");
+        assert_eq!(after[2].site, "whatever", "صفوف غير المتصفح لا تُلمس");
+        assert_eq!(after[0].category, "other", "الفئة لا تتغير");
+
+        db.backfill_sites();
+        let twice = db.get_timeline(0, 999_999);
+        assert_eq!(twice, after, "التشغيل الثاني لا يغيّر شيئاً — خامل");
     }
 }
