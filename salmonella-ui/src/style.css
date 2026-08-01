@@ -58,6 +58,7 @@ body {
   direction: rtl;
   overflow: hidden; /* no page scroll — cards scroll internally */
 }
+html[dir='ltr'] body { direction: ltr; }
 
 #shell {
   max-width: 1400px;
