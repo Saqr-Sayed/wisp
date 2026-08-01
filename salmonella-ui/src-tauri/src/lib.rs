@@ -183,6 +183,22 @@ mod commands {
         let reply = call("RemoveCustomCategory", &(id,)).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
     }
+
+    #[tauri::command]
+    pub async fn list_ignored() -> Result<Vec<(String, String)>, String> {
+        let reply = call("ListIgnored", &()).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn ignore_target(kind: String, target: String) -> Result<(), String> {
+        call("IgnoreTarget", &(kind, target)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn unignore_target(kind: String, target: String) -> Result<(), String> {
+        call("UnignoreTarget", &(kind, target)).await.map(|_| ())
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -327,13 +343,31 @@ mod commands {
         db.remove_custom_category(id);
         Ok(true)
     }
+
+    #[tauri::command]
+    pub fn list_ignored(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String)>, String> {
+        Ok(db.list_ignored())
+    }
+
+    #[tauri::command]
+    pub fn ignore_target(db: State<'_, Arc<Db>>, kind: String, target: String) -> Result<(), String> {
+        db.ignore_target(&kind, &target);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn unignore_target(db: State<'_, Arc<Db>>, kind: String, target: String) -> Result<(), String> {
+        db.unignore_target(&kind, &target);
+        Ok(())
+    }
 }
 
 use commands::{
     add_custom_category, get_known_apps, get_known_sites, get_limits, get_name_overrides,
     get_report, get_series, get_setting, get_site_overrides, get_status, get_timeline,
-    list_custom_categories, notify, remove_custom_category, remove_limit, remove_name_override,
-    remove_site_override, search, set_limit, set_name_override, set_setting, set_site_override,
+    ignore_target, list_custom_categories, list_ignored, notify, remove_custom_category,
+    remove_limit, remove_name_override, remove_site_override, search, set_limit,
+    set_name_override, set_setting, set_site_override, unignore_target,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -349,6 +383,7 @@ pub fn run() {
             get_site_overrides, set_site_override, remove_site_override,
             get_setting, set_setting,
             list_custom_categories, add_custom_category, remove_custom_category,
+            list_ignored, ignore_target, unignore_target,
         ]);
 
     #[cfg(target_os = "windows")]
