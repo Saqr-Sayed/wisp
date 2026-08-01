@@ -142,7 +142,7 @@ fn parse_browser_title(app: &str, title: &str) -> (String, String) {
         .map(|b| format!(" — {}", b.to_uppercase()))
         .find(|s| title.to_lowercase().ends_with(&s.to_lowercase()))
         .or_else(|| {
-            title.find(" — ").and_then(|i| {
+            title.rfind(" — ").and_then(|i| {
                 let rest = &title[i + " — ".len()..];
                 let first = rest.split_whitespace().next().unwrap_or("");
                 let _ = app;
@@ -155,13 +155,13 @@ fn parse_browser_title(app: &str, title: &str) -> (String, String) {
         None => title.trim().to_string(),
     };
     let stripped = trim_bidi(&stripped);
-    // آخر فاصل بين " - " و " / " و " \ " (تنسيق تويتر: "منشور \ X")
-    let sep = [" - ", " / ", " \\ "].iter()
-        .filter_map(|s| stripped.rfind(s))
-        .max();
+    // آخر فاصل بين " - " و " / " و " \ " و " — " (تنسيق فايرفوكس: "عنوان — موقع — Mozilla Firefox")
+    let sep = [" - ", " / ", " \\ ", " — "].iter()
+        .filter_map(|s| stripped.rfind(s).map(|i| (i, s.len())))
+        .max_by_key(|(i, _)| *i);
     let (site, title) = match sep {
-        Some(i) => {
-            let site = stripped[i + 3..].trim();
+        Some((i, sep_len)) => {
+            let site = stripped[i + sep_len..].trim();
             // ponytail: مقطع أخير طويل = منشور إعادة تغريد يعرض النص كاملاً؛
             // نرجع للمقطع الأول (X \ محتوى طويل → X). عتبة 40 حرفاً، غيّرها عند الحاجة.
             let site = if site.len() > 40 { &stripped[..i] } else { site };
@@ -299,6 +299,14 @@ mod tests {
         let e = enrich("org.mozilla.firefox.desktop",
             "X \\ DeepSeek على X: \"🚀 Official API is now LIVE in public beta\" — Mozilla Firefox");
         assert_eq!(e.site, "X");
+    }
+
+    #[test] fn double_em_dash_title_uses_last_segment_as_site() {
+        let e = enrich("org.mozilla.firefox.desktop", "Agent Skill — shieldcn — Mozilla Firefox");
+        assert_eq!(e.site, "shieldcn");
+        assert_eq!(e.title_cleaned(), "Agent Skill");
+        let e = enrich("org.mozilla.firefox.desktop", "الواحة — تغذية — Mozilla Firefox");
+        assert_eq!(e.site, "تغذية");
     }
 
     #[test] fn junk_site_list() {
