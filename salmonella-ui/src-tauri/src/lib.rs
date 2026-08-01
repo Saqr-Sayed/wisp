@@ -126,6 +126,34 @@ mod commands {
     pub async fn remove_name_override(app_id: String) -> Result<(), String> {
         call("RemoveNameOverride", &(app_id,)).await.map(|_| ())
     }
+
+    #[tauri::command]
+    pub async fn get_known_apps() -> Result<Vec<(String, String)>, String> {
+        let reply = call("GetKnownApps", &()).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn get_known_sites() -> Result<Vec<(String, String)>, String> {
+        let reply = call("GetKnownSites", &()).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn get_site_overrides() -> Result<Vec<(String, String)>, String> {
+        let reply = call("GetSiteOverrides", &()).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn set_site_override(site: String, friendly: String) -> Result<(), String> {
+        call("SetSiteOverride", &(site, friendly)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn remove_site_override(site: String) -> Result<(), String> {
+        call("RemoveSiteOverride", &(site,)).await.map(|_| ())
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -216,11 +244,39 @@ mod commands {
         db.remove_name_override(&app_id);
         Ok(())
     }
+
+    #[tauri::command]
+    pub fn get_known_apps(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String)>, String> {
+        Ok(db.get_known_apps())
+    }
+
+    #[tauri::command]
+    pub fn get_known_sites(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String)>, String> {
+        Ok(db.get_known_sites())
+    }
+
+    #[tauri::command]
+    pub fn get_site_overrides(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String)>, String> {
+        Ok(db.get_site_overrides())
+    }
+
+    #[tauri::command]
+    pub fn set_site_override(db: State<'_, Arc<Db>>, site: String, friendly: String) -> Result<(), String> {
+        db.set_site_override(&site, &friendly);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn remove_site_override(db: State<'_, Arc<Db>>, site: String) -> Result<(), String> {
+        db.remove_site_override(&site);
+        Ok(())
+    }
 }
 
 use commands::{
-    get_limits, get_name_overrides, get_report, get_series, get_status, get_timeline,
-    notify, remove_limit, remove_name_override, search, set_limit, set_name_override,
+    get_known_apps, get_known_sites, get_limits, get_name_overrides, get_report, get_series,
+    get_site_overrides, get_status, get_timeline, notify, remove_limit, remove_name_override,
+    remove_site_override, search, set_limit, set_name_override, set_site_override,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -232,6 +288,8 @@ pub fn run() {
             get_timeline, get_status, search,
             get_report, get_series, get_limits, set_limit, remove_limit,
             get_name_overrides, set_name_override, remove_name_override,
+            get_known_apps, get_known_sites,
+            get_site_overrides, set_site_override, remove_site_override,
         ]);
 
     #[cfg(target_os = "windows")]
