@@ -2,9 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import {
   setLimit, removeLimit, eventDuration, categoryLabel,
-  getNameOverrides, setNameOverride, removeNameOverride,
+  setNameOverride, removeNameOverride,
   getSetting, setSetting,
-  type LogEntry,
+  getKnownApps, getKnownSites, setSiteOverride, removeSiteOverride,
+  type LogEntry, type KnownApp, type KnownSite,
 } from '../lib/dbus'
 import { listCustomCategories, addCustomCategory, removeCustomCategory, type CustomCategory } from '../lib/dbus'
 import { currentMode, setMode, type ThemeMode } from '../lib/theme'
@@ -23,7 +24,7 @@ const lang = ref<'auto' | 'ar' | 'en'>('auto')
 onMounted(async () => {
   const v = await getSetting('language').catch(() => 'auto')
   if (v === 'ar' || v === 'en' || v === 'auto') lang.value = v
-  overrides.value = await getNameOverrides()
+  await refreshKnown()
 })
 async function setLang(v: 'auto' | 'ar' | 'en') {
   lang.value = v
@@ -62,17 +63,85 @@ async function addLimit() {
   emit('changed')
 }
 
-const overrides = ref<[string, string][]>([])
 const appId = ref('')
 const friendly = ref('')
+
+const knownApps = ref<KnownApp[]>([])
+const knownSites = ref<KnownSite[]>([])
+const appQ = ref('')
+const siteQ = ref('')
+const editingApp = ref<string | null>(null)
+const editAppName = ref('')
+const editingSite = ref<string | null>(null)
+const editSiteName = ref('')
+const appSuggestions = ref<KnownApp[]>([])
+const siteSuggestions = ref<KnownSite[]>([])
+
+async function refreshKnown() {
+  knownApps.value = await getKnownApps()
+  knownSites.value = await getKnownSites()
+}
+
+function suggestApps(q: string) {
+  const s = q.trim().toLowerCase()
+  appSuggestions.value = s
+    ? knownApps.value.filter(a => a.id.toLowerCase().includes(s) || a.display.toLowerCase().includes(s)).slice(0, 8)
+    : []
+}
+function suggestSites(q: string) {
+  const s = q.trim().toLowerCase()
+  siteSuggestions.value = s
+    ? knownSites.value.filter(a => a.site.toLowerCase().includes(s) || a.display.toLowerCase().includes(s)).slice(0, 8)
+    : []
+}
+function pickAppSuggestion(a: KnownApp) {
+  appId.value = a.id
+  appSuggestions.value = []
+}
+function pickSiteSuggestion(a: KnownSite) {
+  catTarget.value = a.site
+  siteSuggestions.value = []
+}
 
 async function addOverride() {
   if (!appId.value.trim() || !friendly.value.trim()) return
   await setNameOverride(appId.value.trim(), friendly.value.trim())
   appId.value = ''
   friendly.value = ''
-  overrides.value = await getNameOverrides()
+  appSuggestions.value = []
+  await refreshKnown()
   emit('changed')
+}
+
+function startEditApp(a: KnownApp) { editingApp.value = a.id; editAppName.value = a.display }
+function startEditSite(a: KnownSite) { editingSite.value = a.site; editSiteName.value = a.display }
+async function saveEditApp() {
+  if (!editingApp.value || !editAppName.value.trim()) return
+  await setNameOverride(editingApp.value, editAppName.value.trim())
+  editingApp.value = null
+  await refreshKnown()
+  emit('changed')
+}
+async function saveEditSite() {
+  if (!editingSite.value || !editSiteName.value.trim()) return
+  await setSiteOverride(editingSite.value, editSiteName.value.trim())
+  editingSite.value = null
+  await refreshKnown()
+  emit('changed')
+}
+async function revertApp(a: KnownApp) {
+  await removeNameOverride(a.id)
+  await refreshKnown()
+  emit('changed')
+}
+async function revertSite(a: KnownSite) {
+  await removeSiteOverride(a.site)
+  await refreshKnown()
+  emit('changed')
+}
+
+function go(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 }
 
 const cats = ref<CustomCategory[]>([])
@@ -107,10 +176,10 @@ async function delCat(id: number) {
 
     <div class="s-layout">
       <aside class="s-nav">
-        <a href="#sec-general">{{ t('settings.section.general') }}</a>
-        <a href="#sec-limits">{{ t('settings.section.limits') }}</a>
-        <a href="#sec-overrides">{{ t('settings.section.overrides') }}</a>
-        <a href="#sec-categories">{{ t('settings.section.categories') }}</a>
+        <a href="#sec-general" @click.prevent="go('sec-general')">{{ t('settings.section.general') }}</a>
+        <a href="#sec-limits" @click.prevent="go('sec-limits')">{{ t('settings.section.limits') }}</a>
+        <a href="#sec-overrides" @click.prevent="go('sec-overrides')">{{ t('settings.section.overrides') }}</a>
+        <a href="#sec-categories" @click.prevent="go('sec-categories')">{{ t('settings.section.categories') }}</a>
       </aside>
 
       <div class="s-content">
@@ -160,15 +229,51 @@ async function delCat(id: number) {
           <h3>{{ t('settings.section.overrides') }}</h3>
           <p class="hint">{{ t('settings.overrides.hint') }}</p>
           <div class="add-form">
-            <input v-model="appId" :placeholder="t('settings.overrides.placeholder.appId')" />
+            <div class="suggest-wrap">
+              <input v-model="appId" :placeholder="t('settings.overrides.placeholder.appId')" @input="suggestApps(appId)" />
+              <ul v-if="appSuggestions.length" class="suggest">
+                <li v-for="a in appSuggestions" :key="a.id" @mousedown.prevent="pickAppSuggestion(a)">
+                  <code>{{ a.id }}</code> ← {{ a.display }}
+                </li>
+              </ul>
+            </div>
             <input v-model="friendly" :placeholder="t('settings.overrides.placeholder.friendly')" />
             <button class="btn primary" @click="addOverride">{{ t('settings.overrides.add') }}</button>
           </div>
-          <div v-for="[id, f] in overrides" :key="id" class="override-row">
-            <code>{{ id }}</code><span class="arrow">→</span><b>{{ f }}</b>
-            <button class="btn ghost small" @click="removeNameOverride(id).then(() => overrides = overrides.filter(o => o[0] !== id)).then(() => emit('changed'))">{{ t('settings.overrides.delete') }}</button>
+
+          <h4 class="list-title">{{ t('settings.overrides.appsTitle') }}</h4>
+          <input v-model="appQ" class="list-search" :placeholder="t('settings.overrides.search')" />
+          <div v-for="a in knownApps.filter(x => x.id.toLowerCase().includes(appQ.trim().toLowerCase()) || x.display.toLowerCase().includes(appQ.trim().toLowerCase()))" :key="a.id" class="override-row">
+            <code class="owid">{{ a.id }}</code><span class="arrow">→</span>
+            <template v-if="editingApp === a.id">
+              <input v-model="editAppName" class="edit-input" />
+              <button class="btn primary small" @click="saveEditApp">✓</button>
+              <button class="btn ghost small" @click="editingApp = null">✕</button>
+            </template>
+            <template v-else>
+              <b>{{ a.display }}</b>
+              <button class="btn ghost small" @click="startEditApp(a)">{{ t('settings.overrides.rename') }}</button>
+              <button v-if="a.overridden" class="btn ghost small" @click="revertApp(a)">{{ t('settings.overrides.revert') }}</button>
+            </template>
           </div>
-          <div v-if="overrides.length === 0" class="empty">{{ t('settings.overrides.empty') }}</div>
+          <div v-if="knownApps.length === 0" class="empty">{{ t('settings.overrides.noApps') }}</div>
+
+          <h4 class="list-title">{{ t('settings.overrides.sitesTitle') }}</h4>
+          <input v-model="siteQ" class="list-search" :placeholder="t('settings.overrides.search')" />
+          <div v-for="a in knownSites.filter(x => x.site.toLowerCase().includes(siteQ.trim().toLowerCase()) || x.display.toLowerCase().includes(siteQ.trim().toLowerCase()))" :key="a.site" class="override-row">
+            <code class="owid">{{ a.site }}</code><span class="arrow">→</span>
+            <template v-if="editingSite === a.site">
+              <input v-model="editSiteName" class="edit-input" />
+              <button class="btn primary small" @click="saveEditSite">✓</button>
+              <button class="btn ghost small" @click="editingSite = null">✕</button>
+            </template>
+            <template v-else>
+              <b>{{ a.display }}</b>
+              <button class="btn ghost small" @click="startEditSite(a)">{{ t('settings.overrides.rename') }}</button>
+              <button v-if="a.overridden" class="btn ghost small" @click="revertSite(a)">{{ t('settings.overrides.revert') }}</button>
+            </template>
+          </div>
+          <div v-if="knownSites.length === 0" class="empty">{{ t('settings.overrides.noSites') }}</div>
         </section>
 
         <section id="sec-categories" class="card s-cats">
@@ -179,7 +284,14 @@ async function delCat(id: number) {
               <option value="app">{{ t('settings.categories.kind.app') }}</option>
               <option value="site">{{ t('settings.categories.kind.site') }}</option>
             </select>
-            <input v-model="catTarget" :placeholder="t('settings.categories.placeholder.target')" />
+            <div class="suggest-wrap">
+              <input v-model="catTarget" :placeholder="t('settings.categories.placeholder.target')" @input="suggestSites(catTarget)" />
+              <ul v-if="siteSuggestions.length" class="suggest">
+                <li v-for="a in siteSuggestions" :key="a.site" @mousedown.prevent="pickSiteSuggestion(a)">
+                  <code>{{ a.site }}</code>
+                </li>
+              </ul>
+            </div>
             <input v-model="catName" :placeholder="t('settings.categories.placeholder.name')" />
             <button class="btn primary" @click="addCat">{{ t('settings.categories.add') }}</button>
           </div>
@@ -237,4 +349,25 @@ async function delCat(id: number) {
 .pill.small { font-size: 0.7rem; padding: 0.15rem 0.55rem; }
 .arrow { color: var(--ink-muted); }
 .empty { color: var(--ink-muted); font-size: 0.85rem; padding: 0.6rem 0; }
+.suggest-wrap { position: relative; flex: 1 1 180px; }
+.suggest-wrap input { width: 100%; }
+.suggest {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 10;
+  list-style: none; margin: 0; padding: 0.3rem; background: var(--surface-soft);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-sm);
+  max-height: 200px; overflow-y: auto;
+}
+.suggest li {
+  padding: 0.35rem 0.55rem; border-radius: 6px; cursor: pointer;
+  font-size: 0.82rem; color: var(--ink); display: flex; gap: 0.4rem; align-items: center;
+}
+.suggest li:hover { background: var(--accent); color: var(--bg); }
+.suggest code { font-size: 0.75rem; opacity: 0.8; }
+.list-title { font-size: 0.85rem; font-weight: 800; margin: 0.9rem 0 0.4rem; color: var(--ink-muted); }
+.list-search { width: 100%; background: var(--surface-soft); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.4rem 0.6rem; color: var(--ink); font-family: inherit; font-size: 0.85rem; margin-bottom: 0.4rem; }
+.owid { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edit-input { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.3rem 0.5rem; color: var(--ink); font-family: inherit; font-size: 0.85rem; flex: 1; min-width: 120px; }
+.btn.primary.small { padding: 0.25rem 0.7rem; font-size: 0.75rem; }
 </style>
