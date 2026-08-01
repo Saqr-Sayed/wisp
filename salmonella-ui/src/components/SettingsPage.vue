@@ -105,67 +105,73 @@ async function delCat(id: number) {
       <b class="s-title">{{ t('settings.title') }}</b>
     </header>
 
-    <div class="s-cols">
-      <section class="card s-limits">
-        <h3>{{ t('settings.limits.title') }}</h3>
-        <div class="add-form">
-          <select v-model="kind">
-            <option value="category">{{ t('settings.limits.kind.category') }}</option>
-            <option value="app">{{ t('settings.limits.kind.app') }}</option>
-          </select>
-          <input v-model="target" :placeholder="kind === 'category' ? t('settings.limits.placeholder.category') : t('settings.limits.placeholder.app')" />
-          <input v-model.number="minutes" type="number" min="1" :placeholder="t('settings.limits.minutes')" />
-          <button class="btn primary" @click="addLimit">{{ t('settings.limits.add') }}</button>
-        </div>
-        <div v-for="[tgt, k, m] in limits" :key="k + ':' + tgt" class="limit-row">
-          <span class="lname">{{ label(tgt, k) }}</span>
-          <span class="lused" :class="{ over: usedOf(k, tgt) > m }">{{ t('settings.limits.used', { used: usedOf(k, tgt), max: m }) }}</span>
-          <span v-if="usedOf(k, tgt) > m" class="over-label">{{ t('settings.limits.exceeded') }}</span>
-          <button class="btn ghost small" @click="removeLimit(tgt).then(() => emit('changed'))">{{ t('settings.limits.delete') }}</button>
-        </div>
-        <div v-if="limits.length === 0" class="empty">{{ t('settings.limits.empty') }}</div>
-      </section>
+    <div class="s-layout">
+      <aside class="s-nav">
+        <a href="#sec-general">{{ t('settings.section.general') }}</a>
+        <a href="#sec-limits">{{ t('settings.section.limits') }}</a>
+        <a href="#sec-overrides">{{ t('settings.section.overrides') }}</a>
+        <a href="#sec-categories">{{ t('settings.section.categories') }}</a>
+      </aside>
 
-      <div class="s-side">
-        <section class="card s-lang">
-          <h3>{{ t('settings.language.label') }}</h3>
-          <div class="theme-toggle">
-            <button class="pill" :class="{ on: lang === 'auto' }" @click="setLang('auto')">{{ t('settings.language.auto') }}</button>
-            <button class="pill" :class="{ on: lang === 'ar' }" @click="setLang('ar')">{{ t('settings.language.ar') }}</button>
-            <button class="pill" :class="{ on: lang === 'en' }" @click="setLang('en')">{{ t('settings.language.en') }}</button>
+      <div class="s-content">
+        <section id="sec-general" class="card">
+          <h3>{{ t('settings.section.general') }}</h3>
+          <div class="row">
+            <div class="s-lang">
+              <h4>{{ t('settings.language.label') }}</h4>
+              <div class="theme-toggle">
+                <button class="pill" :class="{ on: lang === 'auto' }" @click="setLang('auto')">{{ t('settings.language.auto') }}</button>
+                <button class="pill" :class="{ on: lang === 'ar' }" @click="setLang('ar')">العربية</button>
+                <button class="pill" :class="{ on: lang === 'en' }" @click="setLang('en')">English</button>
+              </div>
+            </div>
+            <div class="s-theme">
+              <h4>{{ t('settings.section.theme') }}</h4>
+              <div class="theme-toggle">
+                <button class="pill" :class="{ on: theme === 'system' }" @click="toggleTheme('system')">{{ t('settings.theme.system') }}</button>
+                <button class="pill" :class="{ on: theme === 'light' }" @click="toggleTheme('light')">{{ t('settings.theme.light') }}</button>
+                <button class="pill" :class="{ on: theme === 'dark' }" @click="toggleTheme('dark')">{{ t('settings.theme.dark') }}</button>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section class="card s-theme">
-          <h3>{{ t('settings.theme.title') }}</h3>
-          <div class="theme-toggle">
-            <button class="pill" :class="{ on: theme === 'system' }" @click="toggleTheme('system')">{{ t('settings.theme.pill.system') }}</button>
-            <button class="pill" :class="{ on: theme === 'light' }" @click="toggleTheme('light')">{{ t('settings.theme.pill.light') }}</button>
-            <button class="pill" :class="{ on: theme === 'dark' }" @click="toggleTheme('dark')">{{ t('settings.theme.pill.dark') }}</button>
+        <section id="sec-limits" class="card s-limits">
+          <h3>{{ t('settings.section.limits') }}</h3>
+          <div class="add-form">
+            <select v-model="kind">
+              <option value="category">{{ t('settings.limits.kind.category') }}</option>
+              <option value="app">{{ t('settings.limits.kind.app') }}</option>
+            </select>
+            <input v-model="target" :placeholder="kind === 'category' ? t('settings.limits.placeholder.category') : t('settings.limits.placeholder.app')" />
+            <input v-model.number="minutes" type="number" min="1" :placeholder="t('settings.limits.minutes')" />
+            <button class="btn primary" @click="addLimit">{{ t('settings.limits.add') }}</button>
           </div>
+          <div v-for="[t0, k, m] in limits" :key="k + ':' + t0" class="limit-row">
+            <span class="lname">{{ label(t0, k) }}</span>
+            <span class="lused" :class="{ over: usedOf(k, t0) > m }">{{ t('settings.limits.used', { used: usedOf(k, t0), max: m }) }}</span>
+            <span v-if="usedOf(k, t0) > m" class="over-label">{{ t('settings.limits.exceeded') }}</span>
+            <button class="btn ghost small" @click="removeLimit(t0).then(() => emit('changed'))">{{ t('settings.limits.delete') }}</button>
+          </div>
+          <div v-if="limits.length === 0" class="empty">{{ t('settings.limits.empty') }}</div>
         </section>
 
-        <section class="card s-overrides">
-          <h3>{{ t('settings.overrides.title') }}</h3>
-          <p class="hint">
-            {{ t('settings.overrides.hint') }}
-            <span v-html="t('settings.overrides.example')"></span>
-          </p>
+        <section id="sec-overrides" class="card s-overrides">
+          <h3>{{ t('settings.section.overrides') }}</h3>
+          <p class="hint">{{ t('settings.overrides.hint') }}</p>
           <div class="add-form">
             <input v-model="appId" :placeholder="t('settings.overrides.placeholder.appId')" />
             <input v-model="friendly" :placeholder="t('settings.overrides.placeholder.friendly')" />
             <button class="btn primary" @click="addOverride">{{ t('settings.overrides.add') }}</button>
           </div>
           <div v-for="[id, f] in overrides" :key="id" class="override-row">
-            <code>{{ id }}</code>
-            <span class="arrow">→</span>
-            <b>{{ f }}</b>
-            <button class="btn ghost small" @click="removeNameOverride(id).then(() => overrides.value = overrides.value.filter(o => o[0] !== id)).then(() => emit('changed'))">{{ t('settings.overrides.delete') }}</button>
+            <code>{{ id }}</code><span class="arrow">→</span><b>{{ f }}</b>
+            <button class="btn ghost small" @click="removeNameOverride(id).then(() => overrides = overrides.filter(o => o[0] !== id)).then(() => emit('changed'))">{{ t('settings.overrides.delete') }}</button>
           </div>
           <div v-if="overrides.length === 0" class="empty">{{ t('settings.overrides.empty') }}</div>
         </section>
 
-        <section class="card s-cats" id="sec-categories">
+        <section id="sec-categories" class="card s-cats">
           <h3>{{ t('settings.section.categories') }}</h3>
           <p class="hint">{{ t('settings.categories.hint') }}</p>
           <div class="add-form">
@@ -179,9 +185,7 @@ async function delCat(id: number) {
           </div>
           <div v-for="c in cats" :key="c.id" class="override-row">
             <span class="pill small">{{ t('settings.categories.kind.' + c.kind) }}</span>
-            <code>{{ c.target }}</code>
-            <span class="arrow">→</span>
-            <b>{{ c.display_name }}</b>
+            <code>{{ c.target }}</code><span class="arrow">→</span><b>{{ c.display_name }}</b>
             <button class="btn ghost small" @click="delCat(c.id)">{{ t('settings.categories.delete') }}</button>
           </div>
           <div v-if="cats.length === 0" class="empty">{{ t('settings.categories.empty') }}</div>
@@ -193,33 +197,44 @@ async function delCat(id: number) {
 
 <style scoped>
 .settings-page { display: flex; flex-direction: column; gap: 0.9rem; flex: 1; min-height: 0; }
-.s-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.9rem 0 0.2rem; }
+.s-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0 0.2rem; }
 .s-title { font-size: 1.05rem; font-weight: 900; }
-.s-cols { display: flex; gap: 14px; flex: 1; min-height: 0; }
-.s-limits { flex: 2; padding: 1.1rem 1.2rem; overflow-y: auto; min-width: 0; }
-.s-side { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.s-theme, .s-overrides { padding: 1.1rem 1.2rem; }
-.s-overrides { overflow-y: auto; }
-h3 { font-size: 0.95rem; margin-bottom: 0.7rem; }
-.add-form { display: flex; gap: 0.5rem; margin-bottom: 0.7rem; }
+.s-layout { display: flex; gap: 14px; flex: 1; min-height: 0; }
+.s-nav {
+  width: 180px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px;
+  position: sticky; top: 0; align-self: flex-start; padding-top: 0.6rem;
+}
+.s-nav a {
+  color: var(--ink-muted); font-weight: 700; font-size: 0.9rem;
+  padding: 0.45rem 0.7rem; border-radius: 8px; text-decoration: none;
+}
+.s-nav a:hover { background: var(--surface-soft); color: var(--ink); }
+.s-content { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow-y: auto; padding-inline-end: 0.3rem; }
+.s-content .card { padding: 1.1rem 1.2rem; max-width: 760px; }
+.s-content .card h3 { font-size: 1rem; margin-bottom: 0.7rem; }
+.s-content .card h4 { font-size: 0.85rem; font-weight: 800; margin-bottom: 0.4rem; color: var(--ink-muted); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.add-form { display: flex; gap: 0.5rem; margin-bottom: 0.7rem; flex-wrap: wrap; }
 .add-form input, .add-form select {
   background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px;
-  padding: 0.4rem 0.6rem; color: var(--ink); font-family: inherit; font-size: 0.85rem;
+  padding: 0.45rem 0.6rem; color: var(--ink); font-family: inherit; font-size: 0.85rem; min-width: 0;
 }
-.add-form input:first-of-type { flex: 1; }
+.add-form input { flex: 1 1 180px; }
 .limit-row, .override-row {
-  display: flex; gap: 0.7rem; align-items: center; padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border);
+  display: flex; gap: 0.7rem; align-items: center; padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border); flex-wrap: wrap;
 }
-.lname { flex: 1; font-weight: 600; }
+.lname { flex: 1; font-weight: 600; min-width: 0; }
 .lused { color: var(--ink-muted); font-size: 0.85rem; }
 .lused.over { color: var(--danger); font-weight: 700; }
 .over-label { color: var(--danger); font-size: 0.75rem; font-weight: 700; }
 .btn.small { padding: 0.25rem 0.7rem; font-size: 0.75rem; }
-.theme-toggle { display: flex; gap: 5px; }
+.theme-toggle { display: flex; gap: 5px; flex-wrap: wrap; }
 .hint { color: var(--ink-muted); font-size: 0.8rem; margin-bottom: 0.7rem; }
 .hint code { background: var(--surface-soft); border-radius: 4px; padding: 0 4px; }
-.override-row { font-size: 0.85rem; }
+.override-row code { font-size: 0.78rem; }
 .override-row b { flex: 1; }
+.pill.small { font-size: 0.7rem; padding: 0.15rem 0.55rem; }
 .arrow { color: var(--ink-muted); }
+.empty { color: var(--ink-muted); font-size: 0.85rem; padding: 0.6rem 0; }
 </style>
