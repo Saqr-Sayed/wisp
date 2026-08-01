@@ -19,9 +19,9 @@ for (const s of ['get_known_apps', 'get_known_sites', 'get_site_overrides', 'set
   assert.ok(api.includes(s), 'r3: dbus_api.rs ناقص: ' + s)
 }
 
-// r4: SettingsPage.vue يستخدم البطاقة الجديدة
+// r4: SettingsPage.vue يستخدم التخطيط الجديد
 const page = fs.readFileSync('src/components/SettingsPage.vue', 'utf8')
-for (const s of ['getKnownApps', 'getKnownSites', 'scrollIntoView', 'settings.overrides.revert', 'settings.overrides.noApps']) {
+for (const s of ['getKnownApps', 'getKnownSites', 'listIgnored', 'ignoreTarget', 'settings.lists.tab.apps', 'settings.lists.remove']) {
   assert.ok(page.includes(s), 'r4: SettingsPage.vue ناقص: ' + s)
 }
 
