@@ -125,13 +125,13 @@ async function clearLimit(target: string) {
 // ── التطبيقات والمواقع ───────────────────────────────
 const tab = ref<'apps' | 'sites'>('apps')
 const q = ref('')
-const ignored = ref(new Set<string>()) // `kind:target`
+const ignored = ref(new Set<string>()) // `kind:target` (المواقع بحروف صغيرة)
 async function refreshIgnored() {
   const rows = await listIgnored()
-  ignored.value = new Set(rows.map(([k, trg]) => `${k}:${trg}`))
+  ignored.value = new Set(rows.map(([k, trg]) => `${k}:${k === 'site' ? trg.toLowerCase() : trg}`))
 }
 function isIgnored(kind: 'app' | 'site', target: string) {
-  return ignored.value.has(`${kind}:${target}`)
+  return ignored.value.has(`${kind}:${kind === 'site' ? target.toLowerCase() : target}`)
 }
 
 const filteredApps = computed(() => {

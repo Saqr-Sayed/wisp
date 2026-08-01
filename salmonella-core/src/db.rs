@@ -323,9 +323,17 @@ impl Db {
 
     pub fn is_ignored(&self, kind: &str, target: &str) -> bool {
         if target.is_empty() { return false; }
-        self.conn.lock().unwrap().query_row(
-            "SELECT 1 FROM ignored WHERE kind=?1 AND target=?2", params![kind, target],
-            |_| Ok(())).is_ok()
+        let sql = if kind == "site" {
+            "SELECT 1 FROM ignored WHERE kind='site' AND lower(target)=lower(?1)"
+        } else {
+            "SELECT 1 FROM ignored WHERE kind=?1 AND target=?2"
+        };
+        let params: Vec<&dyn rusqlite::ToSql> = if kind == "site" {
+            vec![&target]
+        } else {
+            vec![&kind, &target]
+        };
+        self.conn.lock().unwrap().query_row(sql, params.as_slice(), |_| Ok(())).is_ok()
     }
 
     pub fn ignore_target(&self, kind: &str, target: &str) {
@@ -379,7 +387,6 @@ impl Db {
                 .filter_map(|r| r.ok()).collect()
         };
         apps.into_iter()
-            .filter(|app| !self.is_ignored("app", app))
             .map(|app| {
                 let disp = self.friendly_name(&app);
                 (app, disp)
@@ -387,7 +394,8 @@ impl Db {
     }
 
     pub fn get_known_sites(&self) -> Vec<(String, String)> {
-        // دمج بحروف متشابهة (X و x) مع إبقاء أحدث استخدام؛ استبعاد المهملات والمُستبعدة
+        // دمج بحروف متشابهة (X و x) مع إبقاء أحدث استخدام؛ استبعاد المهملات فقط
+        // (المُستبعدة تبقى ظاهرة حتى يستعيدها المستخدم من الواجهة)
         let sites: Vec<String> = {
             let conn = self.conn.lock().unwrap();
             let mut stmt = conn.prepare(
@@ -399,7 +407,6 @@ impl Db {
         };
         sites.into_iter()
             .filter(|s| !crate::classifier::is_junk_site(s))
-            .filter(|s| !self.is_ignored("site", s))
             .map(|site| {
                 let disp = self.site_friendly_name(&site);
                 (site, disp)
@@ -670,12 +677,14 @@ mod tests {
         assert_eq!(db.get_known_apps().len(), 1);
         assert_eq!(db.get_known_sites().len(), 1);
         db.ignore_target("app", "org.mozilla.firefox.desktop");
-        db.ignore_target("site", "x");
+        db.ignore_target("site", "X");
         assert!(db.is_ignored("app", "org.mozilla.firefox.desktop"));
-        assert!(db.is_ignored("site", "x"));
+        assert!(db.is_ignored("site", "x"), "الموقع يتطابق بدون حساسية لحالة الأحرف");
+        assert!(db.is_ignored("site", "X"));
         assert!(!db.is_ignored("site", "y"));
-        assert!(db.get_known_apps().is_empty(), "التطبيق المُستبعد لا يظهر");
-        assert!(db.get_known_sites().is_empty(), "الموقع المُستبعد لا يظهر");
+        assert!(db.get_known_apps().contains(&("org.mozilla.firefox.desktop".into(), "فايرفوكس".into())),
+            "التطبيق المُستبعد يبقى ظاهراً حتى يستعيده المستخدم");
+        assert_eq!(db.get_known_sites().len(), 1, "الموقع المُستبعد يبقى ظاهراً");
         assert_eq!(db.list_ignored().len(), 2);
         db.unignore_target("app", "org.mozilla.firefox.desktop");
         db.unignore_target("site", "x");
