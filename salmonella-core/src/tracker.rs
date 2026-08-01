@@ -55,6 +55,16 @@ pub fn run_tracker_loop<F>(
             }
 
             let enriched = crate::classifier::enrich(&app, &title);
+            // مستبعد: أغلِق الحدث الجاري ولا تسجّل، دون إطلاق إشارة التغيير
+            if db.is_ignored("app", &app) || db.is_ignored("site", &enriched.site) {
+                if let Some(id) = current_log_id {
+                    db.close_log(id, now);
+                    current_log_id = None;
+                }
+                prev_app.clear();
+                prev_title.clear();
+                continue;
+            }
             let friendly = db.friendly_name(&app);
             let site_friendly = db.site_friendly_name(&enriched.site);
             // تجاوز الفئة بقاعدة مخصصة (لو وُجدت)؛ القاعدة المخصصة لا تُلغي الفئات المدمجة
@@ -126,6 +136,34 @@ mod tests {
         assert_eq!(rows[0].friendly_name, "فايرفوكس");
         assert_eq!(rows[0].site, "YouTube");
         assert_eq!(rows[0].category, "media");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn skips_ignored_app_and_site() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-ign-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        db.ignore_target("app", "org.gnome.Ptyxis.desktop");
+        db.ignore_target("site", "YouTube");
+        let backend = FakeSource(vec![
+            ("org.mozilla.firefox.desktop".into(), "عنوان - YouTube — Mozilla Firefox".into()),
+            ("code.desktop".into(), "main.rs".into()),
+        ], 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            run_tracker_loop(db.clone(), backend, |app, _, _| {
+                // فقط التطبيق غير المستبعد يطلق الإشارة
+                if app == "code.desktop" { tx.send(()).unwrap(); }
+            });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(rows.len(), 1, "التطبيق والموقع المستبعدان لا يُسجلان");
+        assert_eq!(rows[0].app_name, "code.desktop");
+        assert_eq!(rows[0].site, "", "الموقع المستبعد لا يظهر في صف الموقع الجديد");
         let _ = std::fs::remove_file(&path);
     }
 }
