@@ -154,6 +154,35 @@ mod commands {
     pub async fn remove_site_override(site: String) -> Result<(), String> {
         call("RemoveSiteOverride", &(site,)).await.map(|_| ())
     }
+
+    #[tauri::command]
+    pub async fn get_setting(key: String) -> Result<String, String> {
+        let reply = call("GetSetting", &(key,)).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn set_setting(key: String, value: String) -> Result<(), String> {
+        call("SetSetting", &(key, value)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn list_custom_categories() -> Result<Vec<(i64, String, String, String)>, String> {
+        let reply = call("ListCustomCategories", &()).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn add_custom_category(kind: String, target: String, display_name: String) -> Result<i64, String> {
+        let reply = call("AddCustomCategory", &(kind, target, display_name)).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn remove_custom_category(id: i64) -> Result<bool, String> {
+        let reply = call("RemoveCustomCategory", &(id,)).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -271,12 +300,40 @@ mod commands {
         db.remove_site_override(&site);
         Ok(())
     }
+
+    #[tauri::command]
+    pub fn get_setting(db: State<'_, Arc<Db>>, key: String) -> Result<String, String> {
+        Ok(db.get_setting(&key).unwrap_or_default())
+    }
+
+    #[tauri::command]
+    pub fn set_setting(db: State<'_, Arc<Db>>, key: String, value: String) -> Result<(), String> {
+        db.set_setting(&key, &value);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn list_custom_categories(db: State<'_, Arc<Db>>) -> Result<Vec<(i64, String, String, String)>, String> {
+        Ok(db.list_custom_categories())
+    }
+
+    #[tauri::command]
+    pub fn add_custom_category(db: State<'_, Arc<Db>>, kind: String, target: String, display_name: String) -> Result<i64, String> {
+        Ok(db.add_custom_category(&kind, &target, &display_name).unwrap_or(0))
+    }
+
+    #[tauri::command]
+    pub fn remove_custom_category(db: State<'_, Arc<Db>>, id: i64) -> Result<bool, String> {
+        db.remove_custom_category(id);
+        Ok(true)
+    }
 }
 
 use commands::{
-    get_known_apps, get_known_sites, get_limits, get_name_overrides, get_report, get_series,
-    get_site_overrides, get_status, get_timeline, notify, remove_limit, remove_name_override,
-    remove_site_override, search, set_limit, set_name_override, set_site_override,
+    add_custom_category, get_known_apps, get_known_sites, get_limits, get_name_overrides,
+    get_report, get_series, get_setting, get_site_overrides, get_status, get_timeline,
+    list_custom_categories, notify, remove_custom_category, remove_limit, remove_name_override,
+    remove_site_override, search, set_limit, set_name_override, set_setting, set_site_override,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -290,6 +347,8 @@ pub fn run() {
             get_name_overrides, set_name_override, remove_name_override,
             get_known_apps, get_known_sites,
             get_site_overrides, set_site_override, remove_site_override,
+            get_setting, set_setting,
+            list_custom_categories, add_custom_category, remove_custom_category,
         ]);
 
     #[cfg(target_os = "windows")]
