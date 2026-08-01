@@ -21,7 +21,7 @@ export type Period = 'day' | 'week' | 'month'
 export function formatTime(ts: number): string {
   const d = new Date(ts * 1000)
   const loc = i18nLocale.value === 'ar' ? 'ar-SA' : 'en-US'
-  return d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit', numberingSystem: 'latn' })
 }
 
 export function formatDuration(secs: number | null): string {
