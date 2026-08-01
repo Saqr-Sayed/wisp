@@ -343,9 +343,17 @@ impl Db {
     }
 
     pub fn unignore_target(&self, kind: &str, target: &str) {
-        self.conn.lock().unwrap().execute(
-            "DELETE FROM ignored WHERE kind=?1 AND target=?2",
-            params![kind, target]).ok();
+        let sql = if kind == "site" {
+            "DELETE FROM ignored WHERE kind='site' AND lower(target)=lower(?1)"
+        } else {
+            "DELETE FROM ignored WHERE kind=?1 AND target=?2"
+        };
+        let params: Vec<&dyn rusqlite::ToSql> = if kind == "site" {
+            vec![&target]
+        } else {
+            vec![&kind, &target]
+        };
+        self.conn.lock().unwrap().execute(sql, params.as_slice()).ok();
     }
 
     pub fn list_ignored(&self) -> Vec<(String, String)> {

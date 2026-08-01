@@ -325,7 +325,13 @@ async function setSiteLimit(x: KnownSite) {
                 </template>
                 <button class="btn ghost small danger" @click="removeTarget('app', a.id)">{{ t('settings.lists.remove') }}</button>
               </template>
-              <button v-else class="btn ghost small" @click="restoreTarget('app', a.id)">{{ t('settings.lists.restore') }}</button>
+              <template v-else>
+                <button class="btn ghost small" @click="restoreTarget('app', a.id)">{{ t('settings.lists.restore') }}</button>
+                <template v-if="limitOf('app', a.id) !== undefined">
+                  <span class="lused">{{ t('settings.limits.used', { used: usedOf('app', a.id), max: limitOf('app', a.id) }) }}</span>
+                  <button class="btn ghost small" @click="clearLimit(a.id)">{{ t('settings.lists.clearLimit') }}</button>
+                </template>
+              </template>
             </div>
           </div>
           <div v-if="filteredApps.length === 0" class="empty">
@@ -367,7 +373,13 @@ async function setSiteLimit(x: KnownSite) {
                 </template>
                 <button class="btn ghost small danger" @click="removeTarget('site', x.site)">{{ t('settings.lists.remove') }}</button>
               </template>
-              <button v-else class="btn ghost small" @click="restoreTarget('site', x.site)">{{ t('settings.lists.restore') }}</button>
+              <template v-else>
+                <button class="btn ghost small" @click="restoreTarget('site', x.site)">{{ t('settings.lists.restore') }}</button>
+                <template v-if="limitOf('site', x.site) !== undefined">
+                  <span class="lused">{{ t('settings.limits.used', { used: usedOf('site', x.site), max: limitOf('site', x.site) }) }}</span>
+                  <button class="btn ghost small" @click="clearLimit(x.site)">{{ t('settings.lists.clearLimit') }}</button>
+                </template>
+              </template>
             </div>
           </div>
           <div v-if="filteredSites.length === 0" class="empty">
