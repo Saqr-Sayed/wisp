@@ -129,3 +129,6 @@ export async function getKnownSites(): Promise<KnownSite[]> {
 export async function getSiteOverrides(): Promise<[string, string][]> { return invoke('get_site_overrides') }
 export async function setSiteOverride(site: string, friendly: string) { return invoke('set_site_override', { site, friendly }) }
 export async function removeSiteOverride(site: string) { return invoke('remove_site_override', { site }) }
+export async function listIgnored(): Promise<[string, string][]> { return invoke('list_ignored') }
+export async function ignoreTarget(kind: 'app' | 'site', target: string) { return invoke('ignore_target', { kind, target }) }
+export async function unignoreTarget(kind: 'app' | 'site', target: string) { return invoke('unignore_target', { kind, target }) }
