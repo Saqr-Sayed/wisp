@@ -109,6 +109,7 @@ function label(g: string, key: string): string {
 </template>
 
 <style scoped>
+.tabs-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .pill.mini { padding: 0.2rem 0.6rem; font-size: 0.75rem; }
 .period-switch { display: inline-flex; gap: 0.15rem; align-self: center; background: var(--surface-soft); border-radius: 999px; padding: 0.15rem; }
 .period-switch .pill { background: transparent; border: none; }
