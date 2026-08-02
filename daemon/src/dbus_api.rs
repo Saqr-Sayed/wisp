@@ -58,6 +58,10 @@ impl ActivityTracker {
         self.db.get_series(from, to)
     }
 
+    async fn get_content(&self, from: i64, to: i64) -> Vec<(String, String, String, i64)> {
+        self.db.get_content(from, to)
+    }
+
     async fn get_limits(&self) -> Vec<(String, String, i64)> {
         self.db.get_limits()
     }
