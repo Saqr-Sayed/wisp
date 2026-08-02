@@ -168,20 +168,46 @@ mod commands {
     }
 
     #[tauri::command]
-    pub async fn list_custom_categories() -> Result<Vec<(i64, String, String, String)>, String> {
-        let reply = call("ListCustomCategories", &()).await?;
+    pub async fn get_categories() -> Result<Vec<(i64, String, String, i64, i64, i64)>, String> {
+        let reply = call("GetCategories", &()).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
     }
 
     #[tauri::command]
-    pub async fn add_custom_category(kind: String, target: String, display_name: String) -> Result<i64, String> {
-        let reply = call("AddCustomCategory", &(kind, target, display_name)).await?;
+    pub async fn get_category_members(id: i64) -> Result<Vec<(String, String)>, String> {
+        let reply = call("GetCategoryMembers", &(id,)).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
     }
 
     #[tauri::command]
-    pub async fn remove_custom_category(id: i64) -> Result<bool, String> {
-        let reply = call("RemoveCustomCategory", &(id,)).await?;
+    pub async fn add_category(name: String, color: String) -> Result<i64, String> {
+        let reply = call("AddCategory", &(name, color)).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn rename_category(id: i64, new_name: String) -> Result<(), String> {
+        call("RenameCategory", &(id, new_name)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn set_category_color(id: i64, color: String) -> Result<(), String> {
+        call("SetCategoryColor", &(id, color)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn add_category_member(id: i64, kind: String, target: String) -> Result<(), String> {
+        call("AddCategoryMember", &(id, kind, target)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn delete_category_member(kind: String, target: String) -> Result<(), String> {
+        call("DeleteCategoryMember", &(kind, target)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn delete_category(id: i64) -> Result<bool, String> {
+        let reply = call("DeleteCategory", &(id,)).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
     }
 
@@ -331,19 +357,47 @@ mod commands {
     }
 
     #[tauri::command]
-    pub fn list_custom_categories(db: State<'_, Arc<Db>>) -> Result<Vec<(i64, String, String, String)>, String> {
-        Ok(db.list_custom_categories())
+    pub fn get_categories(db: State<'_, Arc<Db>>) -> Result<Vec<(i64, String, String, i64, i64, i64)>, String> {
+        Ok(db.categories().into_iter().map(|c| (c.id, c.name, c.color, c.is_builtin, c.is_deletable, c.sort)).collect())
     }
 
     #[tauri::command]
-    pub fn add_custom_category(db: State<'_, Arc<Db>>, kind: String, target: String, display_name: String) -> Result<i64, String> {
-        Ok(db.add_custom_category(&kind, &target, &display_name).unwrap_or(0))
+    pub fn get_category_members(db: State<'_, Arc<Db>>, id: i64) -> Result<Vec<(String, String)>, String> {
+        Ok(db.category_members(id))
     }
 
     #[tauri::command]
-    pub fn remove_custom_category(db: State<'_, Arc<Db>>, id: i64) -> Result<bool, String> {
-        db.remove_custom_category(id);
-        Ok(true)
+    pub fn add_category(db: State<'_, Arc<Db>>, name: String, color: String) -> Result<i64, String> {
+        Ok(db.add_category(&name, &color))
+    }
+
+    #[tauri::command]
+    pub fn rename_category(db: State<'_, Arc<Db>>, id: i64, new_name: String) -> Result<(), String> {
+        db.rename_category(id, &new_name);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn set_category_color(db: State<'_, Arc<Db>>, id: i64, color: String) -> Result<(), String> {
+        db.set_category_color(id, &color);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn add_category_member(db: State<'_, Arc<Db>>, id: i64, kind: String, target: String) -> Result<(), String> {
+        db.add_category_member(id, &kind, &target);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn delete_category_member(db: State<'_, Arc<Db>>, kind: String, target: String) -> Result<(), String> {
+        db.delete_category_member(&kind, &target);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn delete_category(db: State<'_, Arc<Db>>, id: i64) -> Result<bool, String> {
+        Ok(db.delete_category(id))
     }
 
     #[tauri::command]
@@ -365,10 +419,11 @@ mod commands {
 }
 
 use commands::{
-    add_custom_category, get_known_apps, get_known_sites, get_limits, get_name_overrides,
-    get_report, get_series, get_setting, get_site_overrides, get_status, get_timeline,
-    ignore_target, list_custom_categories, list_ignored, notify, remove_custom_category,
-    remove_limit, remove_name_override, remove_site_override, search, set_limit,
+    add_category, add_category_member, delete_category, delete_category_member,
+    get_categories, get_category_members, get_known_apps, get_known_sites, get_limits,
+    get_name_overrides, get_report, get_series, get_setting, get_site_overrides, get_status,
+    get_timeline, ignore_target, list_ignored, notify, remove_limit, remove_name_override,
+    remove_site_override, rename_category, search, set_category_color, set_limit,
     set_name_override, set_setting, set_site_override, unignore_target,
 };
 
@@ -384,7 +439,8 @@ pub fn run() {
             get_known_apps, get_known_sites,
             get_site_overrides, set_site_override, remove_site_override,
             get_setting, set_setting,
-            list_custom_categories, add_custom_category, remove_custom_category,
+            get_categories, get_category_members, add_category, rename_category,
+            set_category_color, add_category_member, delete_category_member, delete_category,
             list_ignored, ignore_target, unignore_target,
         ]);
 
