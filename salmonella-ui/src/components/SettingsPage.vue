@@ -6,7 +6,9 @@ import {
   getSetting, setSetting,
   getKnownApps, getKnownSites, setSiteOverride, removeSiteOverride,
   listIgnored, ignoreTarget, unignoreTarget,
-  type LogEntry, type KnownApp, type KnownSite,
+  getCategories, getCategoryMembers, addCategory, renameCategory, setCategoryColor,
+  addCategoryMember, deleteCategoryMember, deleteCategory, setCategoryCache,
+  type LogEntry, type KnownApp, type KnownSite, type CategoryInfo,
 } from '../lib/dbus'
 import { currentMode, setMode, type ThemeMode } from '../lib/theme'
 import { t, setLocale } from '../lib/i18n'
@@ -21,7 +23,7 @@ const lang = ref<'auto' | 'ar' | 'en'>('auto')
 onMounted(async () => {
   const v = await getSetting('language').catch(() => 'auto')
   if (v === 'ar' || v === 'en' || v === 'auto') lang.value = v
-  await Promise.all([refreshKnown(), refreshIgnored()])
+  await Promise.all([refreshKnown(), refreshIgnored(), refreshCategories()])
 })
 async function setLang(v: 'auto' | 'ar' | 'en') {
   lang.value = v
@@ -61,6 +63,62 @@ async function refreshKnown() {
 async function clearLimit(target: string) {
   await removeLimit(target)
   emit('changed')
+}
+
+// ── الفئات ─────────────────────────────────────────────
+const cats = ref<CategoryInfo[]>([])
+const openMembers = ref<number | null>(null)
+const membersOf = ref<Record<number, { kind: string; target: string }[]>>({})
+const editCatName = ref('')
+const editingCat = ref<number | null>(null)
+const memberKind = ref<'app' | 'site'>('app')
+const memberTarget = ref('')
+const addCatName = ref('')
+const addCatColor = ref('#8a7f6e')
+const showAddCat = ref(false)
+
+async function refreshCategories() {
+  cats.value = await getCategories()
+  setCategoryCache(cats.value)
+  await Promise.all(cats.value.map(async c => {
+    membersOf.value[c.id] = (await getCategoryMembers(c.id)).map(([k, t]) => ({ kind: k, target: t }))
+  }))
+}
+function startEditCat(c: CategoryInfo) { editCatName.value = c.name; editingCat.value = c.id }
+async function saveCatName(c: CategoryInfo) {
+  const name = editCatName.value.trim()
+  if (!name) return
+  await renameCategory(c.id, name)
+  await refreshCategories()
+  editingCat.value = null
+}
+async function setCatColor(c: CategoryInfo, color: string) {
+  await setCategoryColor(c.id, color)
+  await refreshCategories()
+}
+function toggleMembers(id: number) { openMembers.value = openMembers.value === id ? null : id }
+async function addMember(c: CategoryInfo) {
+  const target = memberTarget.value.trim()
+  if (!target) return
+  await addCategoryMember(c.id, memberKind.value, target)
+  memberTarget.value = ''
+  await refreshCategories()
+}
+async function delMember(c: CategoryInfo, m: { kind: string; target: string }) {
+  await deleteCategoryMember(m.kind, m.target)
+  await refreshCategories()
+}
+async function delCat(c: CategoryInfo) {
+  await deleteCategory(c.id)
+  await refreshCategories()
+}
+async function addNewCategory() {
+  const name = addCatName.value.trim()
+  if (!name) return
+  await addCategory(name, addCatColor.value)
+  addCatName.value = ''
+  showAddCat.value = false
+  await refreshCategories()
 }
 
 // ── التطبيقات والمواقع ───────────────────────────────
@@ -165,6 +223,68 @@ async function setSiteLimit(x: KnownSite) {
             </div>
           </div>
         </div>
+      </section>
+
+      <section class="card s-cats">
+        <h3>{{ t('settings.section.categories') }}</h3>
+        <p class="hint">{{ t('settings.categories.hint') }}</p>
+        <p class="hint warn">{{ t('settings.categories.reclassifyNotice') }}</p>
+
+        <div class="add-form">
+          <button class="btn primary small" @click="showAddCat = !showAddCat">
+            {{ t('settings.categories.new') }}
+          </button>
+          <template v-if="showAddCat">
+            <input v-model="addCatName" class="edit-input" :placeholder="t('settings.categories.name')" />
+            <input v-model="addCatColor" type="color" class="color-dot" />
+            <button class="btn primary small" @click="addNewCategory">✓</button>
+          </template>
+        </div>
+
+        <div v-for="c in cats" :key="c.id" class="cat-row">
+          <input type="color" :value="c.color" class="color-dot"
+                 @input="(e) => setCatColor(c, (e.target as HTMLInputElement).value)" />
+          <template v-if="editingCat === c.id">
+            <input v-model="editCatName" class="edit-input" />
+            <button class="btn primary small" @click="saveCatName(c)">✓</button>
+            <button class="btn ghost small" @click="editingCat = null">✕</button>
+          </template>
+          <template v-else>
+            <b class="cname">{{ c.name }}</b>
+            <button class="btn ghost small" @click="startEditCat(c)">{{ t('settings.categories.rename') }}</button>
+          </template>
+          <div class="row-limit">
+            <button class="btn ghost small" @click="toggleMembers(c.id)">
+              {{ t('settings.categories.members') }} ({{ membersOf[c.id]?.length ?? 0 }})
+            </button>
+            <button v-if="c.is_deletable === 1" class="btn ghost small danger" @click="delCat(c)">
+              {{ t('settings.categories.delete') }}
+            </button>
+          </div>
+          <div v-if="openMembers === c.id" class="member-panel">
+            <div class="m-head">
+              <select v-model="memberKind">
+                <option value="app">{{ t('settings.categories.kind.app') }}</option>
+                <option value="site">{{ t('settings.categories.kind.site') }}</option>
+              </select>
+              <input v-model="memberTarget" list="member-suggestions"
+                     :placeholder="t('settings.categories.placeholder.target')" />
+              <datalist id="member-suggestions">
+                <option v-for="a in knownApps" :key="a.id" :value="a.id" />
+                <option v-for="x in knownSites" :key="x.site" :value="x.site" />
+              </datalist>
+              <button class="btn primary small" @click="addMember(c)">{{ t('settings.categories.addMember') }}</button>
+            </div>
+            <ul v-if="(membersOf[c.id] || []).length" class="m-list">
+              <li v-for="m in membersOf[c.id]" :key="m.kind + m.target">
+                <span class="pill small">{{ m.kind }}</span>
+                <code>{{ m.target }}</code>
+                <button class="btn ghost small danger" @click="delMember(c, m)">🗑</button>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div v-if="cats.length === 0" class="empty">{{ t('settings.categories.empty') }}</div>
       </section>
 
       <section class="card s-lists">
@@ -300,9 +420,18 @@ async function setSiteLimit(x: KnownSite) {
   border-bottom: 1px solid var(--border);
 }
 .cat-row > code { font-size: 0.78rem; }
+.color-dot { width: 26px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer; flex-shrink: 0; }
 .cname { flex: 1; min-width: 0; }
 .cat-row .row-limit { margin-inline-start: auto; }
 .row-limit { display: flex; gap: 0.4rem; align-items: center; }
+.member-panel { flex-basis: 100%; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
+.m-head { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.m-head select, .m-head input { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.55rem; color: var(--ink); font-family: inherit; font-size: 0.82rem; }
+.m-head input { flex: 1 1 180px; }
+.m-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.m-list li { display: flex; gap: 0.5rem; align-items: center; font-size: 0.82rem; }
+.m-list code { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.45rem; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.hint.warn { color: var(--danger); font-weight: 600; }
 .limit-input {
   width: 76px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px;
   padding: 0.3rem 0.5rem; color: var(--ink); font-family: inherit; font-size: 0.82rem;
