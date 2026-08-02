@@ -156,6 +156,7 @@ pub fn run_tracker_loop<F>(
             let log_event = LogEvent {
                 event_type: enriched.event_type,
                 category: &category,
+                media_kind: enriched.media_kind,
                 friendly: &friendly,
                 site: &enriched.site,
                 site_friendly: &site_friendly,

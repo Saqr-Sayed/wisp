@@ -37,6 +37,7 @@ pub struct Category {
 pub struct LogEvent<'a> {
     pub event_type: &'a str,
     pub category: &'a str,
+    pub media_kind: &'a str,
     pub friendly: &'a str,
     pub site: &'a str,
     pub site_friendly: &'a str,
@@ -56,6 +57,7 @@ const NEW_COLUMNS: &[(&str, &str)] = &[
     ("episode", "TEXT DEFAULT ''"),
     ("site_friendly", "TEXT DEFAULT ''"),
     ("detail", "TEXT DEFAULT ''"),
+    ("media_kind", "TEXT NOT NULL DEFAULT ''"),
 ];
 
 impl Db {
@@ -175,9 +177,9 @@ impl Db {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO activity_logs(event_type,app_name,window_title,start_time,
-                 friendly_name,site,site_friendly,category,series,episode)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-            params![e.event_type, e.app, e.title, t, e.friendly, e.site, e.site_friendly, e.category, e.series, e.episode],
+                 friendly_name,site,site_friendly,category,series,episode,media_kind)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            params![e.event_type, e.app, e.title, t, e.friendly, e.site, e.site_friendly, e.category, e.series, e.episode, e.media_kind],
         ).ok();
         conn.last_insert_rowid()
     }
@@ -786,12 +788,23 @@ mod tests {
 
     #[test] fn migration_adds_columns_to_old_db() {
         let db = tmp_db("migrate");
-        db.insert_log(&LogEvent { event_type: "app", category: "productivity", friendly: "الطرفية",
+        db.insert_log(&LogEvent { event_type: "app", category: "productivity", media_kind: "", friendly: "الطرفية",
             site: "", site_friendly: "", series: "", episode: "", app: "org.gnome.Ptyxis.desktop", title: "bash" }, 1000);
         let rows = db.get_timeline(0, 2000);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].friendly_name, "الطرفية");
         assert_eq!(rows[0].category, "productivity");
+    }
+
+    #[test]
+    fn insert_log_stores_media_kind() {
+        let db = tmp_db("mediakind");
+        let id = db.insert_log(&LogEvent { event_type: "media", category: "listening", media_kind: "listening",
+            friendly: "", site: "", site_friendly: "", series: "", episode: "",
+            app: "spotify.desktop", title: "أغنية - spotify" }, 1000);
+        let kind: String = db.conn.lock().unwrap().query_row(
+            "SELECT media_kind FROM activity_logs WHERE id=?1", params![id], |r| r.get(0)).unwrap();
+        assert_eq!(kind, "listening");
     }
 
     #[test] fn friendly_name_override_wins() {
@@ -807,7 +820,7 @@ mod tests {
         let db = tmp_db("report");
         let now = 10_000;
         for (app, friendly, dur_sec) in [("a", "تطبيق أ", 60), ("a", "تطبيق أ", 30), ("b", "تطبيق ب", 10)] {
-            let id = db.insert_log(&LogEvent { event_type: "app", category: "other", friendly,
+            let id = db.insert_log(&LogEvent { event_type: "app", category: "other", media_kind: "", friendly,
                 site: "", site_friendly: "", series: "", episode: "", app, title: "t" }, now);
             db.close_log(id, now + dur_sec);
         }
@@ -817,7 +830,7 @@ mod tests {
 
     #[test] fn report_groups_by_category_and_series() {
         let db = tmp_db("report2");
-        let id = db.insert_log(&LogEvent { event_type: "media", category: "media", friendly: "مشغل",
+        let id = db.insert_log(&LogEvent { event_type: "media", category: "media", media_kind: "", friendly: "مشغل",
             site: "", site_friendly: "", series: "الدرس", episode: "26", app: "mpv", title: "الدرس 26" }, 1000);
         db.close_log(id, 1100);
         let cat = db.get_report(0, 999_999, "category");
@@ -830,7 +843,7 @@ mod tests {
 
     #[test] fn close_dangling_closes_open_rows() {
         let db = tmp_db("dangling");
-        let id = db.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+        let id = db.insert_log(&LogEvent { event_type: "app", category: "other", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
         db.close_dangling(2000);
         let (end, dur): (i64, i64) = db.conn.lock().unwrap().query_row(
@@ -842,7 +855,7 @@ mod tests {
     #[test] fn close_dangling_uses_last_alive_when_stale() {
         // power cut: stale last_alive (5000) → dangling entry closes there, not at boot (10000)
         let db1 = tmp_db("dangling-la1");
-        let id1 = db1.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+        let id1 = db1.insert_log(&LogEvent { event_type: "app", category: "other", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
         db1.set_setting("last_alive", "5000");
         db1.close_dangling(10000);
@@ -853,7 +866,7 @@ mod tests {
 
         // fresh last_alive (≤60s ago) → close at now
         let db2 = tmp_db("dangling-la2");
-        let id2 = db2.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+        let id2 = db2.insert_log(&LogEvent { event_type: "app", category: "other", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
         db2.set_setting("last_alive", "9950");
         db2.close_dangling(10000);
@@ -864,7 +877,7 @@ mod tests {
 
         // no last_alive → close at now
         let db3 = tmp_db("dangling-la3");
-        let id3 = db3.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+        let id3 = db3.insert_log(&LogEvent { event_type: "app", category: "other", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
         db3.close_dangling(10000);
         let (end, dur): (i64, i64) = db3.conn.lock().unwrap().query_row(
@@ -961,7 +974,7 @@ mod tests {
     #[test]
     fn rename_updates_history() {
         let db = tmp_db("cat-ren");
-        db.insert_log(&LogEvent { event_type: "media", category: "وسائط", friendly: "",
+        db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "mpv", title: "x.mp4" }, 1000);
         let media = db.categories().iter().find(|c| c.name == "وسائط").unwrap().clone();
         db.rename_category(media.id, "فيديو");
@@ -972,7 +985,7 @@ mod tests {
     #[test]
     fn rename_to_existing_name_keeps_both_and_history() {
         let db = tmp_db("cat-ren-clash");
-        db.insert_log(&LogEvent { event_type: "media", category: "وسائط", friendly: "",
+        db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "vlc", title: "x.mp4" }, 1000);
         let media = db.categories().iter().find(|c| c.name == "وسائط").unwrap().clone();
         db.rename_category(media.id, "أخرى");
@@ -997,9 +1010,9 @@ mod tests {
         // ponytail: زمن neovim أعلى من steam لأن get_timeline يرجع تنازلياً — البريف
         // خلط الترتيب فكان التوقع معكوساً على idx0.
         let db = tmp_db("cat-reclass");
-        db.insert_log(&LogEvent { event_type: "app", category: "productivity", friendly: "",
+        db.insert_log(&LogEvent { event_type: "app", category: "productivity", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "steam", title: "CS" }, 1000);
-        db.insert_log(&LogEvent { event_type: "app", category: "games", friendly: "",
+        db.insert_log(&LogEvent { event_type: "app", category: "games", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "neovim", title: "x.rs" }, 2000);
         db.reclassify_all();
         assert_eq!(db.get_timeline(0, 3000)[0].category, "إنتاجية");
@@ -1013,7 +1026,7 @@ mod tests {
     #[test]
     fn delete_member_reclassifies_rows() {
         let db = tmp_db("cat-del-mem");
-        db.insert_log(&LogEvent { event_type: "app", category: "games", friendly: "",
+        db.insert_log(&LogEvent { event_type: "app", category: "games", media_kind: "", friendly: "",
             site: "", site_friendly: "", series: "", episode: "", app: "minegames", title: "x" }, 1000);
         let reading = db.categories().iter().find(|c| c.name == "قراءة").unwrap().clone();
         db.add_category_member(reading.id, "app", "minegames");
@@ -1054,7 +1067,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("salmonella-stale-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let d1 = Db::open(&path);
-        d1.insert_log(&LogEvent { event_type: "app", category: "bogus", friendly: "فايرفوكس",
+        d1.insert_log(&LogEvent { event_type: "app", category: "bogus", media_kind: "", friendly: "فايرفوكس",
             site: "", site_friendly: "", series: "", episode: "",
             app: "org.mozilla.firefox.desktop", title: "t" }, 1000);
         drop(d1);
@@ -1098,7 +1111,7 @@ mod tests {
 
     #[test] fn rename_app_is_retroactive() {
         let db = tmp_db("retroapp");
-        let e = LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+        let e = LogEvent { event_type: "app", category: "browsing", media_kind: "", friendly: "فايرفوكس",
             site: "", site_friendly: "", series: "", episode: "", app: "org.mozilla.firefox.desktop", title: "t" };
         let id = db.insert_log(&e, 1000);
         db.close_log(id, 1100);
@@ -1109,7 +1122,7 @@ mod tests {
 
     #[test] fn rename_site_is_retroactive_and_groups() {
         let db = tmp_db("retrosite");
-        let e = LogEvent { event_type: "app", category: "media", friendly: "فايرفوكس",
+        let e = LogEvent { event_type: "app", category: "media", media_kind: "", friendly: "فايرفوكس",
             site: "youtube.com", site_friendly: "youtube.com", series: "", episode: "",
             app: "org.mozilla.firefox.desktop", title: "t" };
         let id = db.insert_log(&e, 1000);
@@ -1122,7 +1135,7 @@ mod tests {
 
     #[test] fn get_known_apps_derives_distinct() {
         let db = tmp_db("known");
-        let e = LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+        let e = LogEvent { event_type: "app", category: "browsing", media_kind: "", friendly: "فايرفوكس",
             site: "", site_friendly: "", series: "", episode: "", app: "org.mozilla.firefox.desktop", title: "t" };
         let id = db.insert_log(&e, 1000);
         db.close_log(id, 1100);
@@ -1165,7 +1178,7 @@ mod tests {
 
     #[test] fn ignored_crud_and_filtering() {
         let db = tmp_db("ignored");
-        let e = LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+        let e = LogEvent { event_type: "app", category: "browsing", media_kind: "", friendly: "فايرفوكس",
             site: "x", site_friendly: "x", series: "", episode: "",
             app: "org.mozilla.firefox.desktop", title: "t" };
         let id = db.insert_log(&e, 1000);
@@ -1191,7 +1204,7 @@ mod tests {
     #[test] fn known_sites_dedup_case_insensitive() {
         let db = tmp_db("sitededup");
         for (i, s) in ["X", "x", "X / Home"].iter().enumerate() {
-            let id = db.insert_log(&LogEvent { event_type: "app", category: "browsing", friendly: "فايرفوكس",
+            let id = db.insert_log(&LogEvent { event_type: "app", category: "browsing", media_kind: "", friendly: "فايرفوكس",
                 site: s, site_friendly: s, series: "", episode: "",
                 app: "org.mozilla.firefox.desktop", title: "t" }, 1000 + i as i64);
             db.close_log(id, 1100 + i as i64);
@@ -1202,19 +1215,19 @@ mod tests {
 
     #[test] fn backfill_reparses_browser_rows_and_is_idempotent() {
         let db = tmp_db("backfill");
-        let junk = db.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "فايرفوكس",
+        let junk = db.insert_log(&LogEvent { event_type: "app", category: "other", media_kind: "", friendly: "فايرفوكس",
             site: "Calculator", site_friendly: "Calculator", series: "", episode: "",
             app: "org.mozilla.firefox.desktop", title: "Calculator — Mozilla Firefox" }, 3000);
         db.close_log(junk, 3100);
         let old_fmt = db.insert_log(
-            &LogEvent { event_type: "app", category: "other", friendly: "فايرفوكس",
+            &LogEvent { event_type: "app", category: "other", media_kind: "", friendly: "فايرفوكس",
                 site: "X \\ DeepSeek على X: \"طويل جداً جداً من النشر\"",
                 site_friendly: "X \\ DeepSeek على X: \"طويل جداً جداً من النشر\"",
                 series: "", episode: "",
                 app: "org.mozilla.firefox.desktop",
                 title: "X \\ DeepSeek على X: \"طويل جداً جداً من النشر\" — Mozilla Firefox" }, 2000);
         db.close_log(old_fmt, 2100);
-        let non_browser = db.insert_log(&LogEvent { event_type: "app", category: "productivity", friendly: "",
+        let non_browser = db.insert_log(&LogEvent { event_type: "app", category: "productivity", media_kind: "", friendly: "",
             site: "whatever", site_friendly: "whatever", series: "", episode: "",
             app: "org.gnome.Ptyxis.desktop", title: "bash" }, 1000);
         db.close_log(non_browser, 1100);
