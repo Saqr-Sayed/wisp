@@ -159,7 +159,8 @@ const ribbonSegs = computed(() => {
 
           <div class="cols">
             <AnalysisTab class="a-col" :logs="dayLogs" :range="analysisRange" :loading="loading"
-              :period="period" @update:period="period = $event" v-model:groupBy="groupBy" />
+              :period="period" @update:period="period = $event" v-model:groupBy="groupBy"
+              @search="searchQuery = $event" />
             <Timeline class="t-col" :logs="dayLogs" :loading="loading" v-model:query="searchQuery" :ribbon="ribbonSegs" />
           </div>
         </div>
