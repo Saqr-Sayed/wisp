@@ -134,6 +134,10 @@ impl Db {
             CREATE TABLE IF NOT EXISTS site_overrides (
                 site TEXT PRIMARY KEY,
                 friendly TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS series_overrides (
+                pattern TEXT PRIMARY KEY,
+                name TEXT NOT NULL
             );"
         ).expect("migrate tables");
 
@@ -173,6 +177,7 @@ impl Db {
             self.reclassify_all();
         }
         self.backfill_media_kind();
+        self.backfill_series();
     }
 
     pub fn insert_log(&self, e: &LogEvent, t: i64) -> i64 {
@@ -403,6 +408,50 @@ impl Db {
 
     pub fn remove_site_override(&self, site: &str) {
         self.conn.lock().unwrap().execute("DELETE FROM site_overrides WHERE site=?1", params![site]).ok();
+    }
+
+    pub fn get_series_overrides(&self) -> Vec<(String, String)> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT pattern, name FROM series_overrides").unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+            .filter_map(|r| r.ok()).collect()
+    }
+
+    pub fn set_series_override(&self, pattern: &str, name: &str) {
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute(
+                "INSERT OR REPLACE INTO series_overrides(pattern,name) VALUES(?1,?2)",
+                params![pattern, name],
+            ).ok();
+        }
+        // تطبيق رجعي فوري بنمط set_site_override: LIKE غير حساس لحالة الأحرف
+        // للنص اللاتيني؛ العربية بلا حالة — سقف موثّق.
+        self.conn.lock().unwrap().execute(
+            "UPDATE activity_logs SET series=?2 WHERE window_title LIKE '%'||?1||'%'",
+            params![pattern, name],
+        ).ok();
+    }
+
+    pub fn remove_series_override(&self, pattern: &str) {
+        self.conn.lock().unwrap().execute("DELETE FROM series_overrides WHERE pattern=?1", params![pattern]).ok();
+    }
+
+    /// أطول نمط يطابق العنوان (بأحرف صغيرة في Rust — تطابق لاتيني دقيق الحالة،
+    /// سقف موثّق) يفوز؛ التعادل يُحسم بالأسبق rowid. المطابقة على العنوان فقط.
+    pub fn resolve_series(&self, app: &str, title: &str) -> Option<String> {
+        let _ = app; // ponytail: المطابقة على العنوان الخام فقط كما اعتمدت المواصفة
+        let title_l = title.to_lowercase();
+        let rows: Vec<(String, String, i64)> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT pattern, name, rowid FROM series_overrides").unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        rows.into_iter()
+            .filter(|(p, _, _)| title_l.contains(&p.to_lowercase()))
+            .max_by(|a, b| a.0.len().cmp(&b.0.len()).then_with(|| b.2.cmp(&a.2)))
+            .map(|(_, name, _)| name)
     }
 
     pub fn is_ignored(&self, kind: &str, target: &str) -> bool {
@@ -815,6 +864,33 @@ impl Db {
         let tx = conn.transaction().unwrap();
         for (id, kind) in mapped {
             tx.execute("UPDATE activity_logs SET media_kind=?1 WHERE id=?2", params![kind, id]).ok();
+        }
+        tx.commit().ok();
+    }
+
+    /// اشتقاق series/episode لصفوف الوسائط القديمة الفارغة: تجاوز إن وُجد وإلا
+    /// enrich (episode يُعاد اشتقاقه مع السلسلة — كلاهما فارغٌ تاريخياً).
+    /// تمريرة خاملة بمعاملة واحدة (بنمط backfill_media_kind)؛ حارس series=''
+    /// لا يمسّ الصفوف ذات السلسلة الجيدة؛ سياق المجلد لا يُسترد تاريخياً.
+    fn backfill_series(&self) {
+        let rows: Vec<(i64, String, String)> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT id, app_name, window_title FROM activity_logs
+                WHERE series = '' AND media_kind IN ('reading','watching','listening')").unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        if rows.is_empty() { return; }
+        let mapped: Vec<(i64, String, String)> = rows.iter().map(|(id, app, title)| {
+            let e = crate::classifier::enrich(app, title);
+            let series = self.resolve_series(app, title).unwrap_or(e.series);
+            (*id, series, e.episode)
+        }).collect();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction().unwrap();
+        for (id, series, episode) in mapped {
+            tx.execute("UPDATE activity_logs SET series=?1, episode=?2 WHERE id=?3",
+                params![series, episode, id]).ok();
         }
         tx.commit().ok();
     }
@@ -1433,5 +1509,100 @@ mod tests {
         db.backfill_sites();
         let twice = db.get_timeline(0, 999_999);
         assert_eq!(twice, after, "التشغيل الثاني لا يغيّر شيئاً — خامل");
+    }
+
+    #[test] fn series_overrides_crud() {
+        let db = tmp_db("seriesov");
+        assert!(db.get_series_overrides().is_empty());
+        db.set_series_override("الدرس", "تفسير آية الكرسي");
+        assert_eq!(db.get_series_overrides(),
+            vec![("الدرس".to_string(), "تفسير آية الكرسي".to_string())]);
+        db.set_series_override("الدرس", "سلسلة أخرى");
+        assert_eq!(db.get_series_overrides(),
+            vec![("الدرس".to_string(), "سلسلة أخرى".to_string())], "التحديث يغيّر الاسم");
+        db.remove_series_override("الدرس");
+        assert!(db.get_series_overrides().is_empty());
+    }
+
+    #[test]
+    fn resolve_series_partial_match_case_insensitive() {
+        let db = tmp_db("seriesres2");
+        db.set_series_override("movie", "أفلامي");
+        assert_eq!(db.resolve_series("mpv.desktop", "Movie.mp4 - mpv").unwrap(), "أفلامي",
+            "تطابق جزئي بحرف صغير على العنوان الخام");
+        assert!(db.resolve_series("mpv.desktop", "الدرس 2 - mpv").is_none());
+    }
+
+    #[test]
+    fn resolve_series_longest_pattern_wins() {
+        let db = tmp_db("seriesres");
+        db.set_series_override("الدرس", "تفسير آية الكرسي");
+        db.set_series_override("الدرس 12", "درس خاص");
+        assert_eq!(db.resolve_series("mpv.desktop", "الدرس 12 - mpv").unwrap(), "درس خاص", "الأطول يفوز");
+        assert_eq!(db.resolve_series("mpv.desktop", "الدرس 11 - mpv").unwrap(), "تفسير آية الكرسي");
+    }
+
+    #[test]
+    fn set_series_override_is_retroactive() {
+        let db = tmp_db("seriesretro");
+        let empty = LogEvent { event_type: "media", category: "وسائط", media_kind: "watching", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "mpv.desktop", title: "الدرس 2 - mpv" };
+        let id1 = db.insert_log(&empty, 1000);
+        db.close_log(id1, 1100);
+        let weak = LogEvent { event_type: "media", category: "وسائط", media_kind: "watching", friendly: "",
+            site: "", site_friendly: "", series: "الدرس", episode: "3",
+            app: "mpv.desktop", title: "الدرس 3 - mpv" };
+        let id2 = db.insert_log(&weak, 2000);
+        db.close_log(id2, 2100);
+        db.set_series_override("الدرس", "تفسير آية الكرسي");
+        let rows = db.get_timeline(0, 9999);
+        assert_eq!(rows[0].series, "تفسير آية الكرسي", "الصف الضعيف المخزَّن يتجاوز أيضاً (فجوة الحارس)");
+        assert_eq!(rows[1].series, "تفسير آية الكرسي", "الصف الفارغ يتحدث فوراً");
+    }
+
+    #[test]
+    fn backfill_series_fills_old_rows() {
+        // قاعدة بلا عمودي series/media_kind — Db::open يضيفهما: backfill_media_kind
+        // يملأ media_kind ثم backfill_series يملأ series/episode من enrich + التجاوزات.
+        let path = std::env::temp_dir().join(format!("salmonella-{}-seriesbf.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL CHECK(event_type IN ('system','app','media')),
+                app_name TEXT NOT NULL DEFAULT '',
+                window_title TEXT NOT NULL DEFAULT '',
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                duration INTEGER,
+                series TEXT DEFAULT '',
+                episode TEXT DEFAULT ''
+            );
+            CREATE TABLE series_overrides (
+                pattern TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            );
+            INSERT INTO series_overrides(pattern,name) VALUES('الدرس 12','تفسير آية الكرسي');
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, series)
+                VALUES('media','mpv.desktop','الدرس 11 - mpv',1000,1100,100,'');
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, series)
+                VALUES('media','mpv.desktop','الدرس 12 - mpv',2000,2100,100,'');
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, series)
+                VALUES('media','mpv.desktop','SpongeBob S01E03 - mpv',3000,3100,100,'SpongeBob');"
+        ).unwrap();
+        drop(old);
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, 999_999);
+        // الترتيب تنازلي: SpongeBob (start 3000) ثم الدرس 12 ثم الدرس 11
+        assert_eq!(rows[0].series, "SpongeBob", "الصف ذو السلسلة الجيدة لا يُلمس — حارس series=''");
+        assert_eq!(rows[1].series, "تفسير آية الكرسي", "التجاوز يربح على enrich");
+        assert_eq!(rows[1].episode, "12", "الحلقة تُعاد اشتقاقها مع السلسلة");
+        assert_eq!(rows[2].series, "الدرس");
+        assert_eq!(rows[2].episode, "11");
+        db.backfill_series();
+        let twice = db.get_timeline(0, 999_999);
+        assert_eq!(twice, rows, "التشغيل الثاني خامل — حارس series=''");
+        let _ = std::fs::remove_file(&path);
     }
 }
