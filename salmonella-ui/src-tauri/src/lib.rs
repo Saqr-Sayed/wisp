@@ -97,6 +97,12 @@ mod commands {
     }
 
     #[tauri::command]
+    pub async fn get_content(from: i64, to: i64) -> Result<Vec<(String, String, String, i64)>, String> {
+        let reply = call("GetContent", &(from, to)).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
     pub async fn get_limits() -> Result<Vec<(String, String, i64)>, String> {
         let reply = call("GetLimits", &()).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
@@ -280,6 +286,11 @@ mod commands {
     }
 
     #[tauri::command]
+    pub fn get_content(db: State<'_, Arc<Db>>, from: i64, to: i64) -> Result<Vec<(String, String, String, i64)>, String> {
+        Ok(db.get_content(from, to))
+    }
+
+    #[tauri::command]
     pub fn get_limits(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String, i64)>, String> {
         Ok(db.get_limits())
     }
@@ -420,7 +431,7 @@ mod commands {
 
 use commands::{
     add_category, add_category_member, delete_category, delete_category_member,
-    get_categories, get_category_members, get_known_apps, get_known_sites, get_limits,
+    get_categories, get_category_members, get_content, get_known_apps, get_known_sites, get_limits,
     get_name_overrides, get_report, get_series, get_setting, get_site_overrides, get_status,
     get_timeline, ignore_target, list_ignored, notify, remove_limit, remove_name_override,
     remove_site_override, rename_category, search, set_category_color, set_limit,
@@ -439,7 +450,7 @@ pub fn run() {
             get_known_apps, get_known_sites,
             get_site_overrides, set_site_override, remove_site_override,
             get_setting, set_setting,
-            get_categories, get_category_members, add_category, rename_category,
+            get_categories, get_category_members, get_content, add_category, rename_category,
             set_category_color, add_category_member, delete_category_member, delete_category,
             list_ignored, ignore_target, unignore_target,
         ]);
