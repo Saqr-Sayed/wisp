@@ -1,6 +1,8 @@
-const MEDIA_APPS: &[&str] = &["mpv", "vlc", "totem", "celluloid", "ffplay", "smplayer", "io.mpv.Mpv"];
+const MEDIA_APPS: &[&str] = &["mpv", "vlc", "totem", "celluloid", "ffplay", "smplayer", "io.mpv.Mpv",
+    "showtime", "org.gnome.Showtime"];
 const VIDEO_EXTS: &[&str] = &[".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".flv"];
-const VIDEO_PLAYERS: &[&str] = &["mpv", "vlc", "celluloid", "totem", "smplayer", "io.mpv.mpv"];
+const VIDEO_PLAYERS: &[&str] = &["mpv", "vlc", "celluloid", "totem", "smplayer", "io.mpv.mpv",
+    "showtime", "org.gnome.Showtime"];
 const AUDIO_PLAYERS: &[&str] = &["spotify", "rhythmbox", "audacious",
     "lollypop", "strawberry", "cmus", "ncspot"];
 const AUDIO_EXTS: &[&str] = &[".mp3", ".flac", ".ogg", ".m4a", ".opus", ".wav", ".aac"];
@@ -45,6 +47,7 @@ pub struct Enriched {
     pub event_type: &'static str,
     pub category: &'static str,
     pub media_kind: &'static str,
+    pub series_weak: bool,   // سلسلة فارغة أو سقوط الكلمة المفتاحية — لا يُخزَّن
     pub site: String,
     pub series: String,
     pub episode: String,
@@ -78,6 +81,12 @@ fn is_app(app: &str, list: &[&str]) -> bool {
     list.iter().any(|x| a.contains(x))
 }
 
+const FILE_MANAGERS: &[&str] = &["nautilus", "nemo", "thunar", "dolphin"];
+
+/// مدير ملفات؟ الأسماء المجردة فقط — الاحتواء is_app يغطي المعرفات الكاملة
+/// ("nautilus" ⊂ "org.gnome.nautilus.desktop").
+pub fn is_file_manager(app: &str) -> bool { is_app(app, FILE_MANAGERS) }
+
 /// يحوّل أرقاماً عربية-هندية (٢٦) إلى لاتينية (26) في النص.
 fn normalize_digits(s: &str) -> String {
     s.chars().map(|c| match c {
@@ -89,8 +98,9 @@ fn normalize_digits(s: &str) -> String {
     }).collect()
 }
 
-/// `الدرس ٢٦ - mpv` → `(series="الدرس", episode="26")`
-fn parse_episode(raw: &str) -> (String, String) {
+/// `الدرس ٢٦ - mpv` → `(series="الدرس", episode="26", weak=false)`
+/// weak=true: لا تطابق (سلسلة فارغة) أو سقوط الكلمة المفتاحية اسماً بلا اسم سابق.
+fn parse_episode(raw: &str) -> (String, String, bool) {
     let t = normalize_digits(raw.trim());
     // أولوية: SxxEyy ثم EPn/Episode ثم نمط قديم 3x05 ثم كلمة عربية (قد تكون الكلمة نفسها اسم المسلسل)
     let patterns = [r"(?i)^(.+?)[\s.\-–—]*s(\d{1,2})e(\d{1,3})$",
@@ -107,7 +117,8 @@ fn parse_episode(raw: &str) -> (String, String) {
                 let kw = c.get(2).map(|m| m.as_str()).unwrap_or("");
                 let ep = c.get(3).map(|m| m.as_str()).unwrap_or("");
                 let series = if series.is_empty() { kw.to_string() } else { series };
-                return (series, ep.to_string());
+                let weak = c.get(1).is_none();   // الكلمة استُخدمت اسماً — سلسلة هشّة
+                return (series, ep.to_string(), weak);
             }
             let (a, b) = (c.get(2).map(|m| m.as_str()), c.get(3).map(|m| m.as_str()));
             let num = |s: &str| s.parse::<u32>().unwrap_or(0);
@@ -116,10 +127,10 @@ fn parse_episode(raw: &str) -> (String, String) {
                 (Some(e), None) => num(e).to_string(),
                 _ => "".to_string(),
             };
-            return (series, episode);
+            return (series, episode, false);
         }
     }
-    (String::new(), String::new())
+    (String::new(), String::new(), true)
 }
 
 pub fn is_browser_app(app: &str) -> bool { is_app(app, BROWSERS) }
@@ -201,14 +212,16 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
     let title_lower = window_title.to_lowercase();
 
     if matches!(title_lower.as_str(), "__boot__" | "__shutdown__" | "__sleep__" | "__wake__") {
-        return Enriched { event_type: "system", category: "other", media_kind: "", site: String::new(),
-            series: String::new(), episode: String::new(), title_cleaned: window_title.to_string() };
+        return Enriched { event_type: "system", category: "other", media_kind: "", series_weak: true,
+            site: String::new(), series: String::new(), episode: String::new(),
+            title_cleaned: window_title.to_string() };
     }
 
     // قراءة: امتداد مستند أو تطبيق قارئ
     if DOC_EXTS.iter().any(|e| title_lower.contains(e)) || is_app(app_name, READERS) {
-        return Enriched { event_type: "app", category: "reading", media_kind: "reading", site: String::new(),
-            series: String::new(), episode: String::new(), title_cleaned: window_title.to_string() };
+        return Enriched { event_type: "app", category: "reading", media_kind: "reading", series_weak: true,
+            site: String::new(), series: String::new(), episode: String::new(),
+            title_cleaned: window_title.to_string() };
     }
 
     // استماع: مشغل صوت أو امتداد صوتي في العنوان — يسبق فرع مشغلات الفيديو
@@ -216,28 +229,30 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
     if is_app(app_name, AUDIO_PLAYERS) || AUDIO_EXTS.iter().any(|e| title_lower.contains(e)) {
         let title = strip_suffix(window_title, AUDIO_SUFFIXES);
         return Enriched { event_type: "media", category: "listening", media_kind: "listening",
-            site: String::new(), series: String::new(), episode: String::new(),
+            series_weak: true, site: String::new(), series: String::new(), episode: String::new(),
             title_cleaned: title };
     }
 
     // مشغلات فيديو: لاحقة المشغل تُحذف ثم كشف الحلقة
     if is_app(app_name, VIDEO_PLAYERS) {
         let title = strip_suffix(window_title, &[" - mpv", " - VLC media player", " - Celluloid", " - Totem"]);
-        let (series, episode) = parse_episode(&title);
+        let (series, episode, weak) = parse_episode(&title);
         let category = "media";
-        return Enriched { event_type: "media", category, media_kind: "watching", site: String::new(),
-            series, episode, title_cleaned: title };
+        return Enriched { event_type: "media", category, media_kind: "watching",
+            series_weak: series.is_empty() || weak, site: String::new(), series, episode,
+            title_cleaned: title };
     }
     if VIDEO_EXTS.iter().any(|e| title_lower.contains(e)) {
-        return Enriched { event_type: "media", category: "media", media_kind: "watching", site: String::new(),
-            series: String::new(), episode: String::new(), title_cleaned: window_title.to_string() };
+        return Enriched { event_type: "media", category: "media", media_kind: "watching", series_weak: true,
+            site: String::new(), series: String::new(), episode: String::new(),
+            title_cleaned: window_title.to_string() };
     }
 
     // متصفح: استخراج الموقع
     if is_browser_app(app_name) {
         let (site, title) = parse_browser_title(app_name, window_title);
-        return Enriched { event_type: "app", category: builtin_category_for_site(&site), media_kind: "", site,
-            series: String::new(), episode: String::new(), title_cleaned: title };
+        return Enriched { event_type: "app", category: builtin_category_for_site(&site), media_kind: "",
+            series_weak: true, site, series: String::new(), episode: String::new(), title_cleaned: title };
     }
 
     // تطبيقات حسب الخريطة
@@ -247,8 +262,8 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
         else { "other" };
 
     Enriched { event_type: if category == "media" { "media" } else { "app" }, category,
-        media_kind: "", site: String::new(), series: String::new(), episode: String::new(),
-        title_cleaned: window_title.to_string() }
+        media_kind: "", series_weak: true, site: String::new(), series: String::new(),
+        episode: String::new(), title_cleaned: window_title.to_string() }
 }
 
 /// العنوان المعروض بعد إزالة لاحقة المشغل — مصدر الحقيقة هو enrich
@@ -426,5 +441,34 @@ mod tests {
         let e = enrich("org.gnome.Evince.desktop", "الرياضيات.pdf - Evince");
         assert_eq!(e.media_kind, "reading");
         assert_eq!(e.category, "reading");
+    }
+
+    #[test] fn showtime_video_reaches_watching() {
+        let e = enrich("org.gnome.Showtime.desktop", "Video Player");
+        assert_eq!(e.event_type, "media");
+        assert_eq!(e.media_kind, "watching");
+        assert_eq!(e.series, "");
+    }
+
+    #[test] fn series_weak_true_on_keyword_fall() {
+        let e = enrich("mpv.desktop", "الدرس ٢٦ - mpv");
+        assert!(e.series_weak, "سقوط الكلمة المفتاحية — سلسلة هشّة");
+    }
+
+    #[test] fn series_weak_true_on_no_match() {
+        let e = enrich("mpv.desktop", "movie.mp4 - mpv");
+        assert!(e.series_weak, "بلا تطابق — سلسلة فارغة");
+    }
+
+    #[test] fn series_weak_false_on_strong_series() {
+        assert!(!enrich("mpv.desktop", "SpongeBob S01E03 - mpv").series_weak);
+        assert!(!enrich("mpv.desktop", "Show 3x05").series_weak);
+    }
+
+    #[test] fn is_file_manager_covers_full_ids() {
+        assert!(is_file_manager("org.gnome.Nautilus.desktop"));
+        assert!(is_file_manager("org.nemo.Nemo"));
+        assert!(is_file_manager("org.kde.dolphin"));
+        assert!(!is_file_manager("mpv"));
     }
 }
