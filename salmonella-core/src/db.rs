@@ -654,9 +654,14 @@ impl Db {
     }
 
     pub fn add_category(&self, name: &str, color: &str) -> i64 {
+        let name = name.trim();
+        if name.is_empty() { return 0; }
         let conn = self.conn.lock().unwrap();
-        conn.execute("INSERT INTO categories(name,color,is_builtin,is_deletable,sort)
-            VALUES(?1,?2,0,1,20)", params![name, color]).ok();
+        let taken: Option<i64> = conn.query_row(
+            "SELECT 1 FROM categories WHERE name=?1", params![name], |r| r.get(0)).ok();
+        if taken.is_some() { return 0; }
+        if conn.execute("INSERT INTO categories(name,color,is_builtin,is_deletable,sort)
+            VALUES(?1,?2,0,1,20)", params![name, color]).is_err() { return 0; }
         conn.last_insert_rowid()
     }
 
@@ -665,7 +670,11 @@ impl Db {
         let old: String = conn.query_row("SELECT name FROM categories WHERE id=?1",
             params![id], |r| r.get(0)).unwrap_or_default();
         if old.is_empty() || old == new_name { return; }
-        conn.execute("UPDATE categories SET name=?1 WHERE id=?2", params![new_name, id]).ok();
+        let clash: Option<i64> = conn.query_row(
+            "SELECT 1 FROM categories WHERE name=?1 AND id<>?2", params![new_name, id], |r| r.get(0)).ok();
+        if clash.is_some() { return; }
+        if conn.execute("UPDATE categories SET name=?1 WHERE id=?2 AND name=?3",
+                params![new_name, id, old]).unwrap_or(0) != 1 { return; }
         conn.execute("UPDATE activity_logs SET category=?1 WHERE category=?2", params![new_name, old]).ok();
     }
 
@@ -947,6 +956,29 @@ mod tests {
         db.rename_category(media.id, "فيديو");
         assert_eq!(db.get_timeline(0, 2000)[0].category, "فيديو");
         assert_eq!(db.resolve_category("mpv", "out", "media"), "فيديو");
+    }
+
+    #[test]
+    fn rename_to_existing_name_keeps_both_and_history() {
+        let db = tmp_db("cat-ren-clash");
+        db.insert_log(&LogEvent { event_type: "media", category: "وسائط", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "vlc", title: "x.mp4" }, 1000);
+        let media = db.categories().iter().find(|c| c.name == "وسائط").unwrap().clone();
+        db.rename_category(media.id, "أخرى");
+        assert!(db.categories().iter().any(|c| c.id == media.id && c.name == "وسائط"),
+            "وسائط يُبقي اسمه");
+        assert_eq!(db.categories().iter().filter(|c| c.name == "أخرى").count(), 1,
+            "لا اسم مكرر");
+        assert_eq!(db.get_timeline(0, 2000)[0].category, "وسائط",
+            "تاريخ وسائط غير مُدمج في أخرى");
+    }
+
+    #[test]
+    fn add_category_duplicate_name_returns_zero() {
+        let db = tmp_db("add-cat-dupe");
+        assert_eq!(db.add_category("أخرى", "#000"), 0);
+        assert_eq!(db.add_category("", "#000"), 0);
+        assert_eq!(db.categories().len(), 8, "لا صف جديد يُضاف");
     }
 
     #[test]
