@@ -23,7 +23,8 @@ const limits = ref<[string, string, number][]>([])
 const nowSec = ref(Math.floor(Date.now() / 1000))
 const loading = ref(true)
 const error = ref(false)
-const groupBy = ref<'app' | 'category' | 'site' | 'series'>('app')
+const groupBy = ref<'app' | 'category' | 'site' | 'series'>('category')
+const period = ref<'day' | 'week' | 'month'>('day')
 const searchQuery = ref('')
 
 async function refresh() {
@@ -95,7 +96,21 @@ onMounted(async () => {
 onUnmounted(() => window.clearInterval(timer))
 
 const weekDays = computed(() => daysOfWeek(weekOffset.value))
-const dayRangeNow = computed(() => dayRange(selectedDay.value))
+
+const analysisRange = computed<[number, number]>(() => {
+  const sel = selectedDay.value
+  if (period.value === 'day') return dayRange(sel)
+  if (period.value === 'week') {
+    const wd = weekDays.value
+    return [dayRange(wd[0])[0], dayRange(wd[6])[1]]
+  }
+  const first = new Date(sel.getFullYear(), sel.getMonth(), 1)
+  const last = new Date(sel.getFullYear(), sel.getMonth() + 1, 0)
+  return [
+    Math.floor(first.getTime() / 1000),
+    Math.floor(last.getTime() / 1000) + 86399,
+  ]
+})
 
 function selectDay(d: Date) {
   selectedDay.value = startOfDay(d)
@@ -143,7 +158,8 @@ const ribbonSegs = computed(() => {
             @next="weekOffset = Math.max(0, weekOffset - 1); refresh()" />
 
           <div class="cols">
-            <AnalysisTab class="a-col" :logs="dayLogs" :range="dayRangeNow" :loading="loading" v-model:groupBy="groupBy" />
+            <AnalysisTab class="a-col" :logs="dayLogs" :range="analysisRange" :loading="loading"
+              :period="period" @update:period="period = $event" v-model:groupBy="groupBy" />
             <Timeline class="t-col" :logs="dayLogs" :loading="loading" v-model:query="searchQuery" :ribbon="ribbonSegs" />
           </div>
         </div>
