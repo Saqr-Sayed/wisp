@@ -4,8 +4,25 @@ import { getReport, getSeries, formatDuration, categoryLabel, categoryColor, typ
 import { listCustomCategories, type CustomCategory } from '../lib/dbus'
 import { t } from '../lib/i18n'
 
-const props = defineProps<{ logs: LogEntry[]; range: [number, number]; loading: boolean; groupBy: 'app' | 'category' | 'site' | 'series' }>()
-const emit = defineEmits<{ 'update:groupBy': ['app' | 'category' | 'site' | 'series'] }>()
+const props = defineProps<{
+  logs: LogEntry[]
+  range: [number, number]
+  loading: boolean
+  groupBy: 'category' | 'app' | 'site' | 'series'
+  period: 'day' | 'week' | 'month'
+}>()
+const emit = defineEmits<{
+  'update:groupBy': ['category' | 'app' | 'site' | 'series']
+  'update:period': ['day' | 'week' | 'month']
+}>()
+
+const TABS = ['category', 'app', 'site', 'series'] as const
+const PERIODS = ['day', 'week', 'month'] as const
+
+function tabLabel(id: (typeof TABS)[number]): string {
+  // "series" هو تبويب "محتوى"
+  return id === 'series' ? t('analysis.tab.content') : t(`analysis.tab.${id}`)
+}
 const report = ref<[string, number][]>([])
 const series = ref<[string, string, number][]>([])
 
@@ -45,11 +62,20 @@ function label(g: string, key: string): string {
 
 <template>
   <div class="analysis card">
-    <div class="pill-group">
-      <button v-for="g in (['app', 'category', 'site', 'series'] as const)" :key="g"
-        class="pill" :class="{ on: groupBy === g }" @click="emit('update:groupBy', g)">
-        {{ g === 'app' ? t('analysis.pill.app') : g === 'category' ? t('analysis.pill.category') : g === 'site' ? t('analysis.pill.site') : t('analysis.pill.series') }}
+    <div class="tabs-row">
+      <button v-for="tabId in TABS" :key="tabId"
+        class="pill" :class="{ on: groupBy === tabId }"
+        @click="emit('update:groupBy', tabId)">
+        {{ tabLabel(tabId) }}
       </button>
+      <span class="spacer"></span>
+      <div class="period-switch" role="group" aria-label="الفلترة الزمنية">
+        <button v-for="pId in PERIODS" :key="pId"
+          class="pill mini" :class="{ on: period === pId }"
+          @click="emit('update:period', pId)">
+          {{ t(`analysis.period.${pId}`) }}
+        </button>
+      </div>
     </div>
     <ul class="custom-cat-hint" v-if="cats.length">
       <li v-for="c in cats" :key="c.id" :title="`${c.kind}: ${c.target}`">· {{ c.display_name }}</li>
@@ -83,6 +109,11 @@ function label(g: string, key: string): string {
 </template>
 
 <style scoped>
+.pill.mini { padding: 0.2rem 0.6rem; font-size: 0.75rem; }
+.period-switch { display: inline-flex; gap: 0.15rem; align-self: center; background: var(--surface-soft); border-radius: 999px; padding: 0.15rem; }
+.period-switch .pill { background: transparent; border: none; }
+.period-switch .pill.on { background: var(--accent); color: #fff; }
+.spacer { flex: 1; }
 .analysis { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.9rem; padding: 1.1rem 1.2rem; overflow-y: auto; }
 .bars { display: flex; flex-direction: column; gap: 0.6rem; }
 .bar-row { display: flex; gap: 0.6rem; align-items: center; }
