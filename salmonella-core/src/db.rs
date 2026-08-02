@@ -167,10 +167,12 @@ impl Db {
         conn.execute("CREATE INDEX IF NOT EXISTS idx_series ON activity_logs(series)", []).ok();
         drop(conn); // ponytail: حرّر قفل migrate قبل استدعاء دوال تفتح conn بنفسها (std Mutex غير قابل لإعادة الدخول — دون drop سيتجمّد الاختبار)
         let was_seeded = self.seed_if_empty();
+        let listening_added = self.seed_missing_builtins();
         let migrated = self.migrate_custom_categories();
-        if was_seeded || migrated || self.has_stale_category_rows() {
+        if was_seeded || listening_added || migrated || self.has_stale_category_rows() {
             self.reclassify_all();
         }
+        self.backfill_media_kind();
     }
 
     pub fn insert_log(&self, e: &LogEvent, t: i64) -> i64 {
@@ -294,6 +296,26 @@ impl Db {
                AND start_time>=?1 AND start_time<=?2 ORDER BY start_time").unwrap();
         stmt.query_map(params![from, to], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
             .filter_map(|r| r.ok()).collect()
+    }
+
+    /// صفوف المحتوى الخام: (bucket, series, name, seconds)
+    /// name = عنوان مُنظَّف عبر classifier::clean_title
+    pub fn get_content(&self, from: i64, to: i64) -> Vec<(String, String, String, i64)> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT media_kind, series, app_name, window_title, duration FROM activity_logs
+             WHERE start_time>=?1 AND start_time<=?2
+               AND duration IS NOT NULL AND media_kind != ''
+             ORDER BY start_time").unwrap();
+        stmt.query_map(params![from, to], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?, r.get::<_, i64>(4)?))
+        }).unwrap()
+        .filter_map(|r| r.ok())
+        .map(|(kind, series, app, title, dur)| {
+            (kind, series, crate::classifier::clean_title(&app, &title), dur)
+        })
+        .collect()
     }
 
     pub fn get_limits(&self) -> Vec<(String, String, i64)> {
@@ -565,6 +587,7 @@ impl Db {
             ("تصفح", "browsing", "#64748b", 5),
             ("سوشيال ميديا", "social-media", "#db2777", 6),
             ("أخرى", "other", "#8a7f6e", 7),
+            ("استماع", "listening", "#0d9488", 8),
         ];
         for (name, slug, color, sort) in seeds {
             conn.execute("INSERT INTO categories(name,slug,color,is_builtin,is_deletable,sort)
@@ -591,10 +614,33 @@ impl Db {
             ("social-media", "site", "facebook"), ("social-media", "site", "instagram"),
             ("social-media", "site", "x"), ("social-media", "site", "twitter"),
             ("social-media", "site", "tiktok"), ("social-media", "site", "snapchat"),
+            ("listening", "app", "spotify"), ("listening", "app", "rhythmbox"),
+            ("listening", "app", "audacious"), ("listening", "app", "lollypop"),
+            ("listening", "app", "strawberry"), ("listening", "app", "cmus"),
+            ("listening", "app", "ncspot"),
         ];
         for (slug, kind, target) in members {
             conn.execute("INSERT INTO category_members(category_id,kind,target)
                 SELECT id,?2,?3 FROM categories WHERE slug=?1", params![slug, kind, target]).ok();
+        }
+        true
+    }
+
+    /// إدراج "استماع" في قواعد مثبتة سابقاً (seed_if_empty يعمل على الفارغة فقط).
+    /// تعيد true عند إدراجها — يُطلق عندها reclassify_all في migrate.
+    fn seed_missing_builtins(&self) -> bool {
+        let conn = self.conn.lock().unwrap();
+        let exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM categories WHERE slug='listening'", [], |r| r.get(0)).unwrap();
+        if exists > 0 { return false; }
+        conn.execute(
+            "INSERT INTO categories(name,slug,color,is_builtin,is_deletable,sort)
+             VALUES('استماع','listening','#0d9488',1,0,8)", []).ok();
+        let members: &[&str] = &["spotify", "rhythmbox", "audacious", "lollypop",
+            "strawberry", "cmus", "ncspot"];
+        for m in members {
+            conn.execute("INSERT OR IGNORE INTO category_members(category_id,kind,target)
+                SELECT id,'app',?1 FROM categories WHERE slug='listening'", params![m]).ok();
         }
         true
     }
@@ -746,6 +792,29 @@ impl Db {
         let tx = conn.transaction().unwrap();
         for (id, name) in mapped {
             tx.execute("UPDATE activity_logs SET category=?1 WHERE id=?2", params![name, id]).ok();
+        }
+        tx.commit().ok();
+    }
+
+    /// تعبئة media_kind للصفوف القديمة من المصنف — تمريرة خاملة بمعاملة
+    /// واحدة (بنمط reclassify_all)؛ تتقلص لصفر عمل بعد أول إقلاع.
+    fn backfill_media_kind(&self) {
+        let rows: Vec<(i64, String, String)> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT id, app_name, window_title FROM activity_logs
+                WHERE media_kind = '' AND event_type IN ('app','media')").unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        if rows.is_empty() { return; }
+        let mapped: Vec<(i64, String)> = rows.iter().map(|(id, app, title)| {
+            let e = crate::classifier::enrich(app, title);
+            (*id, e.media_kind.to_string())
+        }).collect();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction().unwrap();
+        for (id, kind) in mapped {
+            tx.execute("UPDATE activity_logs SET media_kind=?1 WHERE id=?2", params![kind, id]).ok();
         }
         tx.commit().ok();
     }
@@ -938,11 +1007,11 @@ mod tests {
     }
 
     #[test]
-    fn seed_creates_eight_categories() {
+    fn seed_creates_nine_categories() {
         let db = tmp_db("cat-seed");
         let cats = db.categories();
-        assert_eq!(cats.len(), 8);
-        for n in ["سوشيال ميديا", "ترفيه", "وسائط", "أخرى"] {
+        assert_eq!(cats.len(), 9);
+        for n in ["سوشيال ميديا", "ترفيه", "وسائط", "أخرى", "استماع"] {
             assert!(cats.iter().any(|c| c.name == n), "missing {n}");
         }
         let social = cats.iter().find(|c| c.name == "سوشيال ميديا").unwrap().clone();
@@ -951,6 +1020,126 @@ mod tests {
         assert!(members.iter().any(|(k, t)| k == "app" && t == "telegram"));
         let media = cats.iter().find(|c| c.name == "وسائط").unwrap();
         assert_eq!(media.is_deletable, 0);
+        let listening = cats.iter().find(|c| c.name == "استماع").unwrap().clone();
+        assert_eq!(listening.color, "#0d9488");
+        assert_eq!(listening.is_deletable, 0);
+        let lm = db.category_members(listening.id);
+        assert!(lm.iter().any(|(k, t)| k == "app" && t == "spotify"));
+        assert!(lm.iter().any(|(k, t)| k == "app" && t == "cmus"));
+    }
+
+    #[test]
+    fn seed_missing_builtins_adds_listening_to_installed_db() {
+        // قاعدة مثبتة قبل هذا التحديث: حذف "استماع" وأعضاءها يدوياً ثم إعادة الفتح
+        let path = std::env::temp_dir().join(format!("salmonella-{}-seedmiss.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let d1 = Db::open(&path);
+        {
+            let conn = d1.conn.lock().unwrap();
+            conn.execute("DELETE FROM category_members WHERE category_id IN
+                (SELECT id FROM categories WHERE slug='listening')", []).ok();
+            conn.execute("DELETE FROM categories WHERE slug='listening'", []).ok();
+        }
+        drop(d1);
+        let db = Db::open(&path);
+        let cats = db.categories();
+        assert_eq!(cats.len(), 9, "استماع تُعاد زراعتها عند الفتح");
+        let listening = cats.iter().find(|c| c.name == "استماع").unwrap().clone();
+        let lm = db.category_members(listening.id);
+        assert!(lm.iter().any(|(k, t)| k == "app" && t == "spotify"));
+        drop(db);
+        let db2 = Db::open(&path);
+        assert_eq!(db2.categories().len(), 9, "لا تكرار في الفتح الثاني");
+        assert_eq!(db2.resolve_category("spotify", "", "listening"), "استماع");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn backfill_media_kind_fills_old_rows() {
+        // قاعدة بلا عمود media_kind — Db::open يضيف العمود ويملأه من المصنف
+        let path = std::env::temp_dir().join(format!("salmonella-{}-mediabf.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL CHECK(event_type IN ('system','app','media')),
+                app_name TEXT NOT NULL DEFAULT '',
+                window_title TEXT NOT NULL DEFAULT '',
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                duration INTEGER
+            );
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration)
+                VALUES('app','org.gnome.Evince.desktop','الرياضيات.pdf - Evince',1000,1100,100);
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration)
+                VALUES('media','mpv.desktop','movie.mp4 - mpv',2000,2100,100);
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration)
+                VALUES('app','spotify.desktop','أغنية - spotify',3000,3100,100);
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration)
+                VALUES('system','','__boot__',4000,4000,0);"
+        ).unwrap();
+        drop(old);
+        let db = Db::open(&path);
+        let content = db.get_content(0, 999_999);
+        assert_eq!(content.len(), 3, "النظامي (media_kind='') لا يظهر");
+        assert_eq!(content[0],
+            ("reading".to_string(), String::new(), "الرياضيات.pdf - Evince".to_string(), 100));
+        assert_eq!(content[1],
+            ("watching".to_string(), String::new(), "movie.mp4".to_string(), 100));
+        assert_eq!(content[2],
+            ("listening".to_string(), String::new(), "أغنية".to_string(), 100));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn get_content_buckets_names_and_cleans_titles() {
+        let db = tmp_db("content");
+        let r1 = db.insert_log(&LogEvent { event_type: "app", category: "قراءة", media_kind: "reading",
+            friendly: "", site: "", site_friendly: "", series: "", episode: "",
+            app: "org.gnome.Evince.desktop", title: "الرياضيات.pdf - Evince" }, 1000);
+        db.close_log(r1, 1100);
+        let w1 = db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+            friendly: "", site: "", site_friendly: "", series: "", episode: "",
+            app: "mpv.desktop", title: "movie.mp4 - mpv" }, 2000);
+        db.close_log(w1, 2100);
+        let s1 = db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+            friendly: "", site: "", site_friendly: "", series: "SpongeBob", episode: "1x3",
+            app: "mpv.desktop", title: "SpongeBob S01E03 - mpv" }, 3000);
+        db.close_log(s1, 3100);
+        let s2 = db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+            friendly: "", site: "", site_friendly: "", series: "SpongeBob", episode: "1x4",
+            app: "mpv.desktop", title: "SpongeBob S01E04 - mpv" }, 4000);
+        db.close_log(s2, 4100);
+        let l1 = db.insert_log(&LogEvent { event_type: "media", category: "استماع", media_kind: "listening",
+            friendly: "", site: "", site_friendly: "", series: "", episode: "",
+            app: "spotify.desktop", title: "أغنية - spotify" }, 5000);
+        db.close_log(l1, 5100);
+
+        let content = db.get_content(0, 999_999);
+        assert_eq!(content, vec![
+            ("reading".to_string(), String::new(), "الرياضيات.pdf - Evince".to_string(), 100),
+            ("watching".to_string(), String::new(), "movie.mp4".to_string(), 100),
+            ("watching".to_string(), "SpongeBob".to_string(), "SpongeBob S01E03".to_string(), 100),
+            ("watching".to_string(), "SpongeBob".to_string(), "SpongeBob S01E04".to_string(), 100),
+            ("listening".to_string(), String::new(), "أغنية".to_string(), 100),
+        ]);
+    }
+
+    #[test]
+    fn get_content_excludes_open_and_unclassified_rows() {
+        let db = tmp_db("content-x");
+        // صف مفتوح (duration NULL — لم يُغلق)
+        db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+            friendly: "", site: "", site_friendly: "", series: "", episode: "",
+            app: "mpv.desktop", title: "movie.mp4 - mpv" }, 1000);
+        // تطبيق عادي media_kind=''
+        db.insert_log(&LogEvent { event_type: "app", category: "إنتاجية", media_kind: "",
+            friendly: "", site: "", site_friendly: "", series: "", episode: "",
+            app: "code.desktop", title: "main.rs" }, 2000);
+        // صف نظامي media_kind=''
+        db.insert_system_event("boot", "", 3000, Some(3000));
+        assert!(db.get_content(0, 999_999).is_empty());
     }
 
     #[test]
@@ -969,6 +1158,8 @@ mod tests {
         assert_eq!(db.resolve_category("games", "vlc", "media"), "وسائط"); // site "vlc" لا يوجد → slug media
         assert_eq!(db.resolve_category("evince", "", "reading"), "قراءة");
         assert_eq!(db.resolve_category("whatever", "", "nonsense"), "أخرى");
+        assert_eq!(db.resolve_category("someaudio", "", "listening"), "استماع", "سقوط slug");
+        assert_eq!(db.resolve_category("spotify", "", "listening"), "استماع", "عضو الصوت");
     }
 
     #[test]
@@ -1002,7 +1193,7 @@ mod tests {
         let db = tmp_db("add-cat-dupe");
         assert_eq!(db.add_category("أخرى", "#000"), 0);
         assert_eq!(db.add_category("", "#000"), 0);
-        assert_eq!(db.categories().len(), 8, "لا صف جديد يُضاف");
+        assert_eq!(db.categories().len(), 9, "لا صف جديد يُضاف");
     }
 
     #[test]
