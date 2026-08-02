@@ -125,6 +125,9 @@ export async function getReport(from: number, to: number, groupBy: string): Prom
 export async function getSeries(from: number, to: number): Promise<[string, string, number][]> {
   return invoke('get_series', { from, to })
 }
+export async function getContent(from: number, to: number): Promise<[string, string, string, number][]> {
+  return invoke('get_content', { from, to })
+}
 export async function getLimits(): Promise<[string, string, number][]> { return invoke('get_limits') }
 export async function setLimit(target: string, kind: string, minutes: number) { return invoke('set_limit', { target, kind, minutes }) }
 export async function removeLimit(target: string) { return invoke('remove_limit', { target }) }
