@@ -152,19 +152,7 @@ pub fn run_tracker_loop<F>(
             }
             let friendly = db.friendly_name(&app);
             let site_friendly = db.site_friendly_name(&enriched.site);
-            // تجاوز الفئة بقاعدة مخصصة (لو وُجدت)؛ القاعدة المخصصة لا تُلغي الفئات المدمجة
-            // سوى «other» — أي التطابق يُطبَّق فقط على الفئة الافتراضية.
-            let category: String = if enriched.category == "other" {
-                if let Some(name) = db.match_custom_category("app", &app) {
-                    name
-                } else if !enriched.site.is_empty() {
-                    db.match_custom_category("site", &enriched.site).unwrap_or_else(|| enriched.category.to_string())
-                } else {
-                    enriched.category.to_string()
-                }
-            } else {
-                enriched.category.to_string()
-            };
+            let category: String = db.resolve_category(&app, &enriched.site, enriched.category);
             let log_event = LogEvent {
                 event_type: enriched.event_type,
                 category: &category,
@@ -221,7 +209,7 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].friendly_name, "فايرفوكس");
         assert_eq!(rows[0].site, "YouTube");
-        assert_eq!(rows[0].category, "media");
+        assert_eq!(rows[0].category, "وسائط");
         let _ = std::fs::remove_file(&path);
     }
 
