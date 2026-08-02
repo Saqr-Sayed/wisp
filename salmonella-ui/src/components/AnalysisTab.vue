@@ -81,41 +81,44 @@ function label(g: string, key: string): string {
       <li v-for="c in cats" :key="c.id" :title="`${c.kind}: ${c.target}`">· {{ c.display_name }}</li>
     </ul>
 
-    <div v-if="loading && report.length === 0 && series.length === 0" class="bars">
-      <div v-for="n in 3" :key="n" class="skel" style="height:1.1rem;width:100%"></div>
-    </div>
-
-    <div v-else-if="groupBy === 'series'" class="series">
-      <div v-for="[s, a] in seriesAgg" :key="s" class="srow">
-        <b>{{ s }}</b>
-        <span class="s-eps">{{ t('analysis.episodesCount', { n: a.eps }) }}</span>
-        <span class="s-dur">{{ formatDuration(a.secs) }}</span>
+    <div class="a-content">
+      <div v-if="loading && report.length === 0 && series.length === 0" class="bars">
+        <div v-for="n in 3" :key="n" class="skel" style="height:1.1rem;width:100%"></div>
       </div>
-      <div v-if="series.length === 0" class="empty">{{ t('analysis.empty.episodes') }}</div>
-    </div>
 
-    <div v-else class="bars">
-      <div v-for="[key, d] in report" :key="key" class="bar-row">
-        <span class="bar-label">{{ label(groupBy, key) }}</span>
-        <div class="bar-wrap">
-          <div class="bar" :style="{ width: pct(d) + '%', background: groupBy === 'category' ? categoryColor(key) : 'var(--accent)' }"></div>
+      <div v-else-if="groupBy === 'series'" class="series">
+        <div v-for="[s, a] in seriesAgg" :key="s" class="srow">
+          <b>{{ s }}</b>
+          <span class="s-eps">{{ t('analysis.episodesCount', { n: a.eps }) }}</span>
+          <span class="s-dur">{{ formatDuration(a.secs) }}</span>
         </div>
-        <span class="bar-val">{{ formatDuration(d) }} · {{ pct(d) }}%</span>
+        <div v-if="series.length === 0" class="empty">{{ t('analysis.empty.episodes') }}</div>
       </div>
-      <div v-if="report.length === 0" class="empty">{{ t('analysis.empty.data') }}</div>
+
+      <div v-else class="bars">
+        <div v-for="[key, d] in report" :key="key" class="bar-row">
+          <span class="bar-label">{{ label(groupBy, key) }}</span>
+          <div class="bar-wrap">
+            <div class="bar" :style="{ width: pct(d) + '%', background: groupBy === 'category' ? categoryColor(key) : 'var(--accent)' }"></div>
+          </div>
+          <span class="bar-val">{{ formatDuration(d) }} · {{ pct(d) }}%</span>
+        </div>
+        <div v-if="report.length === 0" class="empty">{{ t('analysis.empty.data') }}</div>
+      </div>
     </div>
 
   </div>
 </template>
 
 <style scoped>
-.tabs-row { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; background: var(--surface); margin: -1.1rem -1.2rem 0.6rem; padding: 0.6rem 1.2rem; box-shadow: 0 1px 0 var(--border); }
+.tabs-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .pill.mini { padding: 0.2rem 0.6rem; font-size: 0.75rem; }
 .period-switch { display: inline-flex; gap: 0.15rem; align-self: center; background: var(--surface-soft); border-radius: 999px; padding: 0.15rem; }
 .period-switch .pill { background: transparent; border: none; }
 .period-switch .pill.on { background: var(--accent); color: #fff; }
 .spacer { flex: 1; }
-.analysis { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.9rem; padding: 1.1rem 1.2rem; overflow-y: auto; }
+.analysis { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.9rem; padding: 1.1rem 1.2rem; overflow: hidden; }
+.a-content { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; padding-inline-end: 0.3rem; }
 .bars { display: flex; flex-direction: column; gap: 0.6rem; }
 .bar-row { display: flex; gap: 0.6rem; align-items: center; }
 .bar-label { width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; font-weight: 600; }
