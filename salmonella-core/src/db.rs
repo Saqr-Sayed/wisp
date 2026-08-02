@@ -731,10 +731,12 @@ impl Db {
             let e = crate::classifier::enrich(app, title);
             (*id, self.resolve_category(app, &e.site, e.category))
         }).collect();
-        let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction().unwrap();
         for (id, name) in mapped {
-            conn.execute("UPDATE activity_logs SET category=?1 WHERE id=?2", params![name, id]).ok();
+            tx.execute("UPDATE activity_logs SET category=?1 WHERE id=?2", params![name, id]).ok();
         }
+        tx.commit().ok();
     }
 }
 
@@ -997,6 +999,18 @@ mod tests {
         let rows = db.get_timeline(0, 3000);
         assert_eq!(rows[0].category, "قراءة", "إعادة التصنيف تغيّره");
         assert_eq!(rows[1].category, "ألعاب", "الآخر ثابت");
+    }
+
+    #[test]
+    fn delete_member_reclassifies_rows() {
+        let db = tmp_db("cat-del-mem");
+        db.insert_log(&LogEvent { event_type: "app", category: "games", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "minegames", title: "x" }, 1000);
+        let reading = db.categories().iter().find(|c| c.name == "قراءة").unwrap().clone();
+        db.add_category_member(reading.id, "app", "minegames");
+        assert_eq!(db.get_timeline(0, 2000)[0].category, "قراءة");
+        db.delete_category_member("app", "minegames");
+        assert_eq!(db.get_timeline(0, 2000)[0].category, "ألعاب", "حذف العضو يعيد التصنيف");
     }
 
     #[test]
