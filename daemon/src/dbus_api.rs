@@ -123,19 +123,41 @@ impl ActivityTracker {
         Ok(())
     }
 
-    async fn list_custom_categories(&self) -> zbus::fdo::Result<Vec<(i64, String, String, String)>> {
-        Ok(self.db.list_custom_categories())
+    async fn get_categories(&self) -> zbus::fdo::Result<Vec<(i64, String, String, i64, i64, i64)>> {
+        Ok(self.db.categories().iter().map(|c| (c.id, c.name.clone(), c.color.clone(),
+            c.is_builtin, c.is_deletable, c.sort)).collect())
     }
 
-    async fn add_custom_category(&self, kind: String, target: String, display_name: String)
-        -> zbus::fdo::Result<i64>
-    {
-        Ok(self.db.add_custom_category(&kind, &target, &display_name).unwrap_or(0))
+    async fn get_category_members(&self, id: i64) -> zbus::fdo::Result<Vec<(String, String)>> {
+        Ok(self.db.category_members(id))
     }
 
-    async fn remove_custom_category(&self, id: i64) -> zbus::fdo::Result<bool> {
-        self.db.remove_custom_category(id);
-        Ok(true)
+    async fn add_category(&self, name: String, color: String) -> zbus::fdo::Result<i64> {
+        Ok(self.db.add_category(&name, &color))
+    }
+
+    async fn rename_category(&self, id: i64, new_name: String) -> zbus::fdo::Result<()> {
+        self.db.rename_category(id, &new_name);
+        Ok(())
+    }
+
+    async fn set_category_color(&self, id: i64, color: String) -> zbus::fdo::Result<()> {
+        self.db.set_category_color(id, &color);
+        Ok(())
+    }
+
+    async fn add_category_member(&self, id: i64, kind: String, target: String) -> zbus::fdo::Result<()> {
+        self.db.add_category_member(id, &kind, &target);
+        Ok(())
+    }
+
+    async fn delete_category_member(&self, kind: String, target: String) -> zbus::fdo::Result<()> {
+        self.db.delete_category_member(&kind, &target);
+        Ok(())
+    }
+
+    async fn delete_category(&self, id: i64) -> zbus::fdo::Result<bool> {
+        Ok(self.db.delete_category(id))
     }
 
     #[zbus(signal)]
