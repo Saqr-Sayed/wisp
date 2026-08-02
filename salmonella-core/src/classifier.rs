@@ -1,6 +1,11 @@
 const MEDIA_APPS: &[&str] = &["mpv", "vlc", "totem", "celluloid", "ffplay", "smplayer", "io.mpv.Mpv"];
 const VIDEO_EXTS: &[&str] = &[".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".flv"];
 const VIDEO_PLAYERS: &[&str] = &["mpv", "vlc", "celluloid", "totem", "smplayer", "io.mpv.mpv"];
+const AUDIO_PLAYERS: &[&str] = &["spotify", "rhythmbox", "audacious",
+    "lollypop", "strawberry", "cmus", "ncspot"];
+const AUDIO_EXTS: &[&str] = &[".mp3", ".flac", ".ogg", ".m4a", ".opus", ".wav", ".aac"];
+const AUDIO_SUFFIXES: &[&str] = &[" - spotify", " - lollypop", " - strawberry",
+    " - cmus", " - audacious", " - ncspot", " - rhythmbox"];
 const BROWSERS: &[&str] = &["firefox", "chrome", "chromium", "brave", "edge", "tor", "mozilla"];
 const READERS: &[&str] = &["evince", "okular", "foliate", "xreader", "zathura", "calibre"];
 const DOC_EXTS: &[&str] = &[".pdf", ".epub", ".djvu", ".mobi", ".azw3", ".txt", ".md"];
@@ -39,6 +44,7 @@ const BUILTIN_NAMES: &[(&str, &str)] = &[
 pub struct Enriched {
     pub event_type: &'static str,
     pub category: &'static str,
+    pub media_kind: &'static str,
     pub site: String,
     pub series: String,
     pub episode: String,
@@ -195,14 +201,23 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
     let title_lower = window_title.to_lowercase();
 
     if matches!(title_lower.as_str(), "__boot__" | "__shutdown__" | "__sleep__" | "__wake__") {
-        return Enriched { event_type: "system", category: "other", site: String::new(),
+        return Enriched { event_type: "system", category: "other", media_kind: "", site: String::new(),
             series: String::new(), episode: String::new(), title_cleaned: window_title.to_string() };
     }
 
     // قراءة: امتداد مستند أو تطبيق قارئ
     if DOC_EXTS.iter().any(|e| title_lower.contains(e)) || is_app(app_name, READERS) {
-        return Enriched { event_type: "app", category: "reading", site: String::new(),
+        return Enriched { event_type: "app", category: "reading", media_kind: "reading", site: String::new(),
             series: String::new(), episode: String::new(), title_cleaned: window_title.to_string() };
+    }
+
+    // استماع: مشغل صوت أو امتداد صوتي في العنوان — يسبق فرع مشغلات الفيديو
+    // (mpv + "song.mp3" → استماع بغلبة الامتداد؛ mpv + "movie.mkv" → مشاهدة)
+    if is_app(app_name, AUDIO_PLAYERS) || AUDIO_EXTS.iter().any(|e| title_lower.contains(e)) {
+        let title = strip_suffix(window_title, AUDIO_SUFFIXES);
+        return Enriched { event_type: "media", category: "listening", media_kind: "listening",
+            site: String::new(), series: String::new(), episode: String::new(),
+            title_cleaned: title };
     }
 
     // مشغلات فيديو: لاحقة المشغل تُحذف ثم كشف الحلقة
@@ -210,18 +225,18 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
         let title = strip_suffix(window_title, &[" - mpv", " - VLC media player", " - Celluloid", " - Totem"]);
         let (series, episode) = parse_episode(&title);
         let category = "media";
-        return Enriched { event_type: "media", category, site: String::new(),
+        return Enriched { event_type: "media", category, media_kind: "watching", site: String::new(),
             series, episode, title_cleaned: title };
     }
     if VIDEO_EXTS.iter().any(|e| title_lower.contains(e)) {
-        return Enriched { event_type: "media", category: "media", site: String::new(),
+        return Enriched { event_type: "media", category: "media", media_kind: "watching", site: String::new(),
             series: String::new(), episode: String::new(), title_cleaned: window_title.to_string() };
     }
 
     // متصفح: استخراج الموقع
     if is_browser_app(app_name) {
         let (site, title) = parse_browser_title(app_name, window_title);
-        return Enriched { event_type: "app", category: builtin_category_for_site(&site), site,
+        return Enriched { event_type: "app", category: builtin_category_for_site(&site), media_kind: "", site,
             series: String::new(), episode: String::new(), title_cleaned: title };
     }
 
@@ -232,8 +247,13 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
         else { "other" };
 
     Enriched { event_type: if category == "media" { "media" } else { "app" }, category,
-        site: String::new(), series: String::new(), episode: String::new(),
+        media_kind: "", site: String::new(), series: String::new(), episode: String::new(),
         title_cleaned: window_title.to_string() }
+}
+
+/// العنوان المعروض بعد إزالة لاحقة المشغل — مصدر الحقيقة هو enrich
+pub fn clean_title(app_name: &str, window_title: &str) -> String {
+    enrich(app_name, window_title).title_cleaned().to_string()
 }
 
 #[cfg(test)]
@@ -373,5 +393,38 @@ mod tests {
 
     #[test] fn system_kept() {
         assert_eq!(enrich("", "__boot__").event_type, "system");
+    }
+
+    #[test] fn audio_player_is_listening() {
+        let e = enrich("spotify.desktop", "أغنية - spotify");
+        assert_eq!(e.event_type, "media");
+        assert_eq!(e.category, "listening");
+        assert_eq!(e.media_kind, "listening");
+    }
+
+    #[test] fn audio_ext_in_browser_title_is_listening() {
+        let e = enrich("org.mozilla.firefox.desktop", "song.mp3 - YouTube");
+        assert_eq!(e.media_kind, "listening");
+    }
+
+    #[test] fn audio_check_precedes_video_branch() {
+        let e = enrich("mpv.desktop", "song.mp3 - mpv");
+        assert_eq!(e.media_kind, "listening");
+    }
+
+    #[test] fn video_mkv_stays_watching() {
+        let e = enrich("vlc.desktop", "movie.mkv - VLC media player");
+        assert_eq!(e.media_kind, "watching");
+    }
+
+    #[test] fn clean_title_strips_player_suffix() {
+        assert_eq!(clean_title("spotify.desktop", "أغنية - spotify"), "أغنية");
+        assert_eq!(clean_title("org.gnome.Evince.desktop", "كتاب.pdf - Evince"), "كتاب.pdf - Evince");
+    }
+
+    #[test] fn reading_stays_reading_without_audio() {
+        let e = enrich("org.gnome.Evince.desktop", "الرياضيات.pdf - Evince");
+        assert_eq!(e.media_kind, "reading");
+        assert_eq!(e.category, "reading");
     }
 }
