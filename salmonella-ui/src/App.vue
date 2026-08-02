@@ -5,10 +5,9 @@ import AnalysisTab from './components/AnalysisTab.vue'
 import Timeline from './components/Timeline.vue'
 import WeekNav from './components/WeekNav.vue'
 import SettingsPage from './components/SettingsPage.vue'
-import { getTimeline, getLimits, eventDuration, categoryLabel, type LogEntry } from './lib/dbus'
+import { getTimeline, getLimits, eventDuration, categoryLabel, getSetting, getCategories, setCategoryCache, type LogEntry } from './lib/dbus'
 import { startOfDay, daysOfWeek, dayRange } from './lib/dates'
 import { setLocale, t } from './lib/i18n'
-import { getSetting } from './lib/dbus'
 
 setLocale((typeof navigator !== 'undefined' && navigator.language?.slice(0,2) === 'en') ? 'en' : 'ar')
 
@@ -91,6 +90,7 @@ onMounted(async () => {
   const stored = await getSetting('language').catch(() => 'auto')
   setLocale((stored as 'auto' | 'ar' | 'en') ?? 'auto')
   await refresh()
+  setCategoryCache(await getCategories())
   timer = window.setInterval(async () => { await refresh(); notify() }, 5000)
 })
 onUnmounted(() => window.clearInterval(timer))
