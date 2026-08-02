@@ -421,7 +421,8 @@ impl Db {
         {
             let conn = self.conn.lock().unwrap();
             conn.execute(
-                "INSERT OR REPLACE INTO series_overrides(pattern,name) VALUES(?1,?2)",
+                "INSERT INTO series_overrides(pattern,name) VALUES(?1,?2)
+                 ON CONFLICT(pattern) DO UPDATE SET name=excluded.name",
                 params![pattern, name],
             ).ok();
         }
@@ -873,18 +874,21 @@ impl Db {
     /// تمريرة خاملة بمعاملة واحدة (بنمط backfill_media_kind)؛ حارس series=''
     /// لا يمسّ الصفوف ذات السلسلة الجيدة؛ سياق المجلد لا يُسترد تاريخياً.
     fn backfill_series(&self) {
-        let rows: Vec<(i64, String, String)> = {
+        let rows: Vec<(i64, String, String, String)> = {
             let conn = self.conn.lock().unwrap();
-            let mut stmt = conn.prepare("SELECT id, app_name, window_title FROM activity_logs
+            let mut stmt = conn.prepare("SELECT id, app_name, window_title, episode FROM activity_logs
                 WHERE series = '' AND media_kind IN ('reading','watching','listening')").unwrap();
-            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap()
                 .filter_map(|r| r.ok()).collect()
         };
         if rows.is_empty() { return; }
-        let mapped: Vec<(i64, String, String)> = rows.iter().map(|(id, app, title)| {
+        let mapped: Vec<(i64, String, String)> = rows.iter().map(|(id, app, title, old_episode)| {
             let e = crate::classifier::enrich(app, title);
             let series = self.resolve_series(app, title).unwrap_or(e.series);
-            (*id, series, e.episode)
+            // إن بقي series فارغاً (بلا نمط ولا enrich) نُبقي episode القديم كما هو
+            // (حارس: لا نُفسد episode لوحده من صفوف شبه-مصنفة).
+            let episode = if series.is_empty() { old_episode.clone() } else { e.episode };
+            (*id, series, episode)
         }).collect();
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction().unwrap();
