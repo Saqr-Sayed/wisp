@@ -57,10 +57,47 @@ export function periodRange(period: Period, offset: number): [number, number] {
   return [Math.floor(start.getTime() / 1000), Math.floor(end.getTime() / 1000)]
 }
 
-/** لون الفئة من متغيرات CSS (يتبع السمة الحالية تلقائياً) */
+export interface CategoryInfo {
+  id: number; name: string; color: string; is_builtin: number; is_deletable: number; sort: number
+}
+export type CategoryMember = { kind: 'app' | 'site'; target: string }
+
+let catColorCache = new Map<string, string>()
+
+/** تُستدعى بعد فتح التطبيق أو بعد تعديل الفئات لتحديث لون الرمز. */
+export function setCategoryCache(cats: CategoryInfo[]) {
+  catColorCache = new Map(cats.map(c => [c.name, c.color]))
+}
+
 export function categoryColor(cat: string): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(`--cat-${cat}`).trim()
-  return v || '#8a7f6e'
+  return catColorCache.get(cat) ?? '#8a7f6e'
+}
+
+export async function getCategories(): Promise<CategoryInfo[]> {
+  const rows = await invoke('get_categories') as [number, string, string, number, number, number][]
+  return rows.map(([id, name, color, is_builtin, is_deletable, sort]) =>
+    ({ id, name, color, is_builtin, is_deletable, sort }))
+}
+export async function getCategoryMembers(id: number): Promise<[string, string][]> {
+  return invoke('get_category_members', { id })
+}
+export async function addCategory(name: string, color: string): Promise<number> {
+  return invoke('add_category', { name, color })
+}
+export async function renameCategory(id: number, newName: string) {
+  return invoke('rename_category', { id, newName })
+}
+export async function setCategoryColor(id: number, color: string) {
+  return invoke('set_category_color', { id, color })
+}
+export async function addCategoryMember(id: number, kind: string, target: string) {
+  return invoke('add_category_member', { id, kind, target })
+}
+export async function deleteCategoryMember(kind: string, target: string) {
+  return invoke('delete_category_member', { kind, target })
+}
+export async function deleteCategory(id: number): Promise<boolean> {
+  return invoke('delete_category', { id })
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -99,19 +136,6 @@ export async function getSetting(key: string): Promise<string> {
 }
 export async function setSetting(key: string, value: string): Promise<void> {
   return invoke('set_setting', { key, value })
-}
-
-export interface CustomCategory { id: number; kind: 'app' | 'site'; target: string; display_name: string }
-
-export async function listCustomCategories(): Promise<CustomCategory[]> {
-  const rows = await invoke('list_custom_categories') as [number, string, string, string][]
-  return rows.map(([id, kind, target, display_name]) => ({ id, kind, target, display_name }))
-}
-export async function addCustomCategory(kind: 'app' | 'site', target: string, display_name: string) {
-  return invoke('add_custom_category', { kind, target, display_name })
-}
-export async function removeCustomCategory(id: number) {
-  return invoke('remove_custom_category', { id })
 }
 
 export interface KnownApp { id: string; display: string; overridden: boolean }

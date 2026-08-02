@@ -6,8 +6,7 @@ import {
   getSetting, setSetting,
   getKnownApps, getKnownSites, setSiteOverride, removeSiteOverride,
   listIgnored, ignoreTarget, unignoreTarget,
-  listCustomCategories, addCustomCategory, removeCustomCategory,
-  type LogEntry, type KnownApp, type KnownSite, type CustomCategory,
+  type LogEntry, type KnownApp, type KnownSite,
 } from '../lib/dbus'
 import { currentMode, setMode, type ThemeMode } from '../lib/theme'
 import { t, setLocale } from '../lib/i18n'
@@ -22,7 +21,7 @@ const lang = ref<'auto' | 'ar' | 'en'>('auto')
 onMounted(async () => {
   const v = await getSetting('language').catch(() => 'auto')
   if (v === 'ar' || v === 'en' || v === 'auto') lang.value = v
-  await Promise.all([refreshKnown(), refreshCats(), refreshIgnored()])
+  await Promise.all([refreshKnown(), refreshIgnored()])
 })
 async function setLang(v: 'auto' | 'ar' | 'en') {
   lang.value = v
@@ -53,70 +52,11 @@ function limitOf(kind: string, target: string): number | undefined {
   return limitsBy.value.get(`${kind}:${target}`)
 }
 
-// ── التصنيفات ────────────────────────────────────────
-const cats = ref<CustomCategory[]>([])
 const knownApps = ref<KnownApp[]>([])
 const knownSites = ref<KnownSite[]>([])
-const catKind = ref<'app' | 'site'>('app')
-const catTarget = ref('')
-const catName = ref('')
-const catSuggestions = ref<(KnownApp | KnownSite)[]>([])
-
-async function refreshCats() { cats.value = await listCustomCategories() }
 async function refreshKnown() {
   knownApps.value = await getKnownApps()
   knownSites.value = await getKnownSites()
-}
-function suggestCat(q: string) {
-  const s = q.trim().toLowerCase()
-  const pool: (KnownApp | KnownSite)[] = catKind.value === 'app' ? knownApps.value : knownSites.value
-  catSuggestions.value = s
-    ? pool.filter(a => ('id' in a ? a.id : a.site).toLowerCase().includes(s) || a.display.toLowerCase().includes(s)).slice(0, 8)
-    : []
-}
-function pickCatSuggestion(a: KnownApp | KnownSite) {
-  catTarget.value = 'id' in a ? a.id : a.site
-  catSuggestions.value = []
-}
-async function addCat() {
-  if (!catTarget.value.trim() || !catName.value.trim()) return
-  await addCustomCategory(catKind.value, catTarget.value.trim(), catName.value.trim())
-  catTarget.value = ''; catName.value = ''
-  await refreshCats()
-}
-
-const editCatId = ref<number | null>(null)
-const editCatName = ref('')
-function startEditCat(c: CustomCategory) { editCatId.value = c.id; editCatName.value = c.display_name }
-async function saveEditCat() {
-  if (editCatId.value == null || !editCatName.value.trim()) return
-  const c = cats.value.find(x => x.id === editCatId.value)
-  if (c) {
-    const oldLimit = limitOf('category', c.display_name)
-    await addCustomCategory(c.kind, c.target, editCatName.value.trim())
-    if (oldLimit !== undefined) {
-      await removeLimit(c.display_name)
-      await setLimit(editCatName.value.trim(), 'category', oldLimit)
-    }
-  }
-  editCatId.value = null
-  await refreshCats()
-  emit('changed')
-}
-async function delCat(c: CustomCategory) {
-  await removeLimit(c.display_name).catch(() => {})
-  await removeCustomCategory(c.id)
-  await refreshCats()
-  emit('changed')
-}
-
-const catLimitInput = ref<Record<number, number>>({})
-async function setCatLimit(c: CustomCategory) {
-  const m = catLimitInput.value[c.id]
-  if (!m) return
-  await setLimit(c.display_name, 'category', m)
-  delete catLimitInput.value[c.id]
-  emit('changed')
 }
 async function clearLimit(target: string) {
   await removeLimit(target)
@@ -166,16 +106,6 @@ async function saveEditSite() {
 }
 async function revertApp(a: KnownApp) { await removeNameOverride(a.id); await refreshKnown(); emit('changed') }
 async function revertSite(x: KnownSite) { await removeSiteOverride(x.site); await refreshKnown(); emit('changed') }
-
-const rowCat = ref<{ kind: 'app' | 'site'; target: string } | null>(null)
-const rowCatName = ref('')
-async function saveRowCat() {
-  if (!rowCat.value || !rowCatName.value.trim()) return
-  await addCustomCategory(rowCat.value.kind, rowCat.value.target, rowCatName.value.trim())
-  rowCat.value = null
-  rowCatName.value = ''
-  await refreshCats()
-}
 
 async function removeTarget(kind: 'app' | 'site', target: string) {
   await ignoreTarget(kind, target)
@@ -237,54 +167,6 @@ async function setSiteLimit(x: KnownSite) {
         </div>
       </section>
 
-      <section class="card s-cats">
-        <h3>{{ t('settings.section.categories') }}</h3>
-        <p class="hint">{{ t('settings.categories.hint') }}</p>
-        <div class="add-form">
-          <select v-model="catKind">
-            <option value="app">{{ t('settings.categories.kind.app') }}</option>
-            <option value="site">{{ t('settings.categories.kind.site') }}</option>
-          </select>
-          <div class="suggest-wrap">
-            <input v-model="catTarget" :placeholder="t('settings.categories.placeholder.target')" @input="suggestCat(catTarget)" />
-            <ul v-if="catSuggestions.length" class="suggest">
-              <li v-for="a in catSuggestions" :key="'id' in a ? a.id : a.site" @mousedown.prevent="pickCatSuggestion(a)">
-                <code>{{ 'id' in a ? a.id : a.site }}</code> ← {{ a.display }}
-              </li>
-            </ul>
-          </div>
-          <input v-model="catName" :placeholder="t('settings.categories.placeholder.name')" />
-          <button class="btn primary" @click="addCat">{{ t('settings.categories.add') }}</button>
-        </div>
-
-        <div v-for="c in cats" :key="c.id" class="cat-row">
-          <span class="pill small">{{ t('settings.categories.kind.' + c.kind) }}</span>
-          <code class="owid">{{ c.target }}</code>
-          <span class="arrow">→</span>
-          <template v-if="editCatId === c.id">
-            <input v-model="editCatName" class="edit-input" />
-            <button class="btn primary small" @click="saveEditCat">✓</button>
-            <button class="btn ghost small" @click="editCatId = null">✕</button>
-          </template>
-          <template v-else>
-            <b class="cname">{{ c.display_name }}</b>
-            <button class="btn ghost small" @click="startEditCat(c)">{{ t('settings.categories.rename') }}</button>
-          </template>
-          <div class="row-limit">
-            <input v-model.number="catLimitInput[c.id]" type="number" min="1" class="limit-input" :placeholder="t('settings.categories.limitPlaceholder')" />
-            <button class="btn ghost small" @click="setCatLimit(c)">{{ t('settings.categories.setLimit') }}</button>
-            <template v-if="limitOf('category', c.display_name) !== undefined">
-              <span class="lused" :class="{ over: usedOf('category', c.display_name) > (limitOf('category', c.display_name) ?? 0) }">
-                {{ t('settings.limits.used', { used: usedOf('category', c.display_name), max: limitOf('category', c.display_name) }) }}
-              </span>
-              <button class="btn ghost small" @click="clearLimit(c.display_name)">{{ t('settings.categories.clearLimit') }}</button>
-            </template>
-          </div>
-          <button class="btn ghost small danger" @click="delCat(c)">{{ t('settings.categories.delete') }}</button>
-        </div>
-        <div v-if="cats.length === 0" class="empty">{{ t('settings.categories.empty') }}</div>
-      </section>
-
       <section class="card s-lists">
         <h3>{{ t('settings.section.lists') }}</h3>
         <div class="tabs">
@@ -311,12 +193,6 @@ async function setSiteLimit(x: KnownSite) {
               <template v-if="!isIgnored('app', a.id)">
                 <button class="btn ghost small" @click="startEditApp(a)">{{ t('settings.lists.rename') }}</button>
                 <button v-if="a.overridden" class="btn ghost small" @click="revertApp(a)">{{ t('settings.lists.revert') }}</button>
-                <template v-if="rowCat && rowCat.kind === 'app' && rowCat.target === a.id">
-                  <input v-model="rowCatName" class="edit-input narrow" :placeholder="t('settings.lists.categoryPlaceholder')" />
-                  <button class="btn primary small" @click="saveRowCat">✓</button>
-                  <button class="btn ghost small" @click="rowCat = null">✕</button>
-                </template>
-                <button v-else class="btn ghost small" @click="rowCat = { kind: 'app', target: a.id }">{{ t('settings.lists.addToCategory') }}</button>
                 <input v-model.number="appLimitInput[a.id]" type="number" min="1" class="limit-input" :placeholder="t('settings.lists.limitPlaceholder')" />
                 <button class="btn ghost small" @click="setAppLimit(a)">{{ t('settings.lists.setLimit') }}</button>
                 <template v-if="limitOf('app', a.id) !== undefined">
@@ -359,12 +235,6 @@ async function setSiteLimit(x: KnownSite) {
               <template v-if="!isIgnored('site', x.site)">
                 <button class="btn ghost small" @click="startEditSite(x)">{{ t('settings.lists.rename') }}</button>
                 <button v-if="x.overridden" class="btn ghost small" @click="revertSite(x)">{{ t('settings.lists.revert') }}</button>
-                <template v-if="rowCat && rowCat.kind === 'site' && rowCat.target === x.site">
-                  <input v-model="rowCatName" class="edit-input narrow" :placeholder="t('settings.lists.categoryPlaceholder')" />
-                  <button class="btn primary small" @click="saveRowCat">✓</button>
-                  <button class="btn ghost small" @click="rowCat = null">✕</button>
-                </template>
-                <button v-else class="btn ghost small" @click="rowCat = { kind: 'site', target: x.site }">{{ t('settings.lists.addToCategory') }}</button>
                 <input v-model.number="siteLimitInput[x.site]" type="number" min="1" class="limit-input" :placeholder="t('settings.lists.limitPlaceholder')" />
                 <button class="btn ghost small" @click="setSiteLimit(x)">{{ t('settings.lists.setLimit') }}</button>
                 <template v-if="limitOf('site', x.site) !== undefined">
