@@ -90,7 +90,7 @@ onMounted(async () => {
   const stored = await getSetting('language').catch(() => 'auto')
   setLocale((stored as 'auto' | 'ar' | 'en') ?? 'auto')
   await refresh()
-  setCategoryCache(await getCategories())
+  setCategoryCache(await getCategories().catch(() => []))
   timer = window.setInterval(async () => { await refresh(); notify() }, 5000)
 })
 onUnmounted(() => window.clearInterval(timer))
