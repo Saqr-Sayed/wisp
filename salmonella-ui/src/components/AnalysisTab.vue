@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { getReport, getSeries, formatDuration, categoryLabel, categoryColor, type LogEntry } from '../lib/dbus'
+import { getReport, getContent, formatDuration, categoryLabel, categoryColor, type LogEntry } from '../lib/dbus'
 import { t } from '../lib/i18n'
 
 const props = defineProps<{
@@ -13,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:groupBy': ['category' | 'app' | 'site' | 'series']
   'update:period': ['day' | 'week' | 'month']
+  search: [string]
 }>()
 
 const TABS = ['category', 'app', 'site', 'series'] as const
@@ -22,13 +23,18 @@ function tabLabel(id: (typeof TABS)[number]): string {
   // "series" هو تبويب "محتوى"
   return id === 'series' ? t('analysis.tab.content') : t(`analysis.tab.${id}`)
 }
+
 const report = ref<[string, number][]>([])
-const series = ref<[string, string, number][]>([])
+const content = ref<[string, string, string, number][]>([])   // bucket, series, name, seconds
+const collapsed = ref<Set<string>>(new Set())                 // أسماء السلاسل المطوية
+const sortMode = ref<Record<string, 'time' | 'name'>>({
+  reading: 'time', watching: 'time', listening: 'time',
+})
 
 watch(() => [props.range, props.logs, props.groupBy] as const, async () => {
   const [from, to] = props.range
   if (props.groupBy === 'series') {
-    series.value = await getSeries(from, to)
+    content.value = await getContent(from, to)
   } else {
     report.value = await getReport(from, to, props.groupBy)
   }
@@ -39,20 +45,87 @@ function pct(secs: number): number {
   return total ? Math.round((secs / total) * 100) : 0
 }
 
-const seriesAgg = computed(() => {
-  const m = new Map<string, { eps: number; secs: number }>()
-  for (const [s, , secs] of series.value) {
-    const e = m.get(s) ?? { eps: 0, secs: 0 }
-    e.eps++
-    e.secs += secs
-    m.set(s, e)
-  }
-  return [...m.entries()].sort((a, b) => b[1].secs - a[1].secs)
-})
-
 function label(g: string, key: string): string {
   if (g === 'category') return categoryLabel(key)
   return key
+}
+
+type Bucket = 'reading' | 'watching' | 'listening'
+const SECTIONS: Bucket[] = ['reading', 'watching', 'listening']
+interface EpisodeNode { name: string; secs: number }
+interface ItemNode { name: string; secs: number; episodes?: EpisodeNode[] }
+
+const AR_DIGITS = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩','۰','۱','۲','۳','۴','۵','۶','۷','۸','۹']
+
+/// تسمية الحلقة → (موسم، حلقة) للترتيب الرقمي:
+/// "SpongeBob S01E03" ← (1,3)، "الدرس 26" ← (0,26)، "Show 3x05" ← (3,5)؛ بلا تطابق ← (0,0).
+function parseEpisode(label: string): [number, number] {
+  const t = [...label].map(c => {
+    const i = AR_DIGITS.indexOf(c)
+    return i >= 0 ? String(i % 10) : c
+  }).join('')
+  const sxe = t.match(/^(.+?)\s*S(\d{1,2})E(\d{1,3})$/i)
+  if (sxe) return [Number(sxe[2]), Number(sxe[3])]
+  const axb = t.match(/^(?:(.+?)\s*)?(\d{1,2})x(\d{1,3})$/)
+  if (axb) return [Number(axb[2]), Number(axb[3])]
+  const kw = t.match(/(الحلقة|الدرس|الجزء)\s*(\d+)$/)
+  if (kw) return [0, Number(kw[2])]
+  const epn = t.match(/ep(?:\.|isode)?\s*(\d{1,3})$/i)
+  if (epn) return [0, Number(epn[1])]
+  return [0, 0]
+}
+
+const sections = computed<Record<Bucket, ItemNode[]>>(() => {
+  const acc: Record<Bucket, ItemNode[]> = { reading: [], watching: [], listening: [] }
+  for (const [bucket, series, name, secs] of content.value) {
+    const list = acc[bucket as Bucket]
+    if (!list) continue
+    if (series) {
+      let node = list.find(n => n.name === series)
+      if (!node) { node = { name: series, secs: 0, episodes: [] }; list.push(node) }
+      node.secs += secs
+      let ep = node.episodes!.find(e => e.name === name)
+      if (ep) ep.secs += secs
+      else node.episodes!.push({ name, secs })
+    } else {
+      let node = list.find(n => n.name === name)
+      if (node) node.secs += secs
+      else list.push({ name, secs })
+    }
+  }
+  for (const b of SECTIONS) {
+    const mode = sortMode.value[b]
+    acc[b].sort((a, z) => mode === 'time' ? z.secs - a.secs : a.name.localeCompare(z.name, 'ar'))
+    for (const n of acc[b]) {
+      if (n.episodes) {
+        // ترتيب الحلقات رقمي دائماً — لا يتأثر بمبدّل الفرز
+        n.episodes.sort((a, z) => {
+          const [as, ae] = parseEpisode(a.name)
+          const [zs, ze] = parseEpisode(z.name)
+          return as - zs || ae - ze
+        })
+      }
+    }
+  }
+  return acc
+})
+
+const sectionTotals = computed<Record<Bucket, number>>(() => {
+  const out = { reading: 0, watching: 0, listening: 0 }
+  for (const b of SECTIONS) out[b] = sections.value[b].reduce((s, n) => s + n.secs, 0)
+  return out
+})
+const sectionCounts = computed<Record<Bucket, number>>(() => {
+  const out = { reading: 0, watching: 0, listening: 0 }
+  for (const b of SECTIONS) out[b] = sections.value[b].length
+  return out
+})
+
+function toggleCollapse(name: string) {
+  const next = new Set(collapsed.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  collapsed.value = next
 }
 </script>
 
@@ -75,17 +148,51 @@ function label(g: string, key: string): string {
     </div>
 
     <div class="a-content">
-      <div v-if="loading && report.length === 0 && series.length === 0" class="bars">
+      <div v-if="loading && report.length === 0 && content.length === 0" class="bars">
         <div v-for="n in 3" :key="n" class="skel" style="height:1.1rem;width:100%"></div>
       </div>
 
-      <div v-else-if="groupBy === 'series'" class="series">
-        <div v-for="[s, a] in seriesAgg" :key="s" class="srow">
-          <b>{{ s }}</b>
-          <span class="s-eps">{{ t('analysis.episodesCount', { n: a.eps }) }}</span>
-          <span class="s-dur">{{ formatDuration(a.secs) }}</span>
-        </div>
-        <div v-if="series.length === 0" class="empty">{{ t('analysis.empty.episodes') }}</div>
+      <div v-else-if="groupBy === 'series'" class="content">
+        <section v-for="b in SECTIONS" :key="b" class="c-sec">
+          <div class="sec-head">
+            <b>{{ t(`analysis.section.${b}`) }}</b>
+            <div class="sort-toggle" role="group" :aria-label="t('analysis.sort.time')">
+              <button v-for="m in (['time', 'name'] as const)" :key="m"
+                class="pill mini" :class="{ on: sortMode[b] === m }"
+                @click="sortMode[b] = m">
+                {{ t(`analysis.sort.${m}`) }}
+              </button>
+            </div>
+          </div>
+          <div class="sec-total">
+            {{ formatDuration(sectionTotals[b]) }} · {{ t('analysis.section.items', { n: sectionCounts[b] }) }}
+          </div>
+          <template v-if="sections[b].length">
+            <div v-for="it in sections[b]" :key="it.name" class="c-item">
+              <template v-if="it.episodes">
+                <div class="srow" :aria-expanded="!collapsed.has(it.name)">
+                  <button class="chevron" :class="{ open: !collapsed.has(it.name) }"
+                    aria-label="toggle" @click="toggleCollapse(it.name)">▸</button>
+                  <b class="clickable" @click="emit('search', it.name)">{{ it.name }}</b>
+                  <span class="s-eps">{{ t('analysis.episodesCount', { n: it.episodes.length }) }}</span>
+                  <span class="s-dur">{{ formatDuration(it.secs) }}</span>
+                </div>
+                <div v-if="!collapsed.has(it.name)" class="tree-child">
+                  <div v-for="ep in it.episodes" :key="ep.name" class="srow ep"
+                    @click="emit('search', ep.name)">
+                    <span class="ep-name">{{ ep.name }}</span>
+                    <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
+                  </div>
+                </div>
+              </template>
+              <div v-else class="srow" @click="emit('search', it.name)">
+                <b class="clickable">{{ it.name }}</b>
+                <span class="s-dur">{{ formatDuration(it.secs) }}</span>
+              </div>
+            </div>
+          </template>
+          <div v-else class="empty">{{ t('analysis.empty.data') }}</div>
+        </section>
       </div>
 
       <div v-else class="bars">
@@ -122,4 +229,19 @@ function label(g: string, key: string): string {
 .srow b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s-eps { color: var(--accent); font-weight: 700; font-size: 0.8rem; }
 .s-dur { color: var(--ink-muted); font-size: 0.8rem; }
+.content { display: flex; flex-direction: column; gap: 0.9rem; }
+.c-sec { display: flex; flex-direction: column; gap: 0.25rem; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0 0.2rem; border-bottom: 1px solid var(--border); }
+.sec-head b { font-size: 0.95rem; }
+.sort-toggle { display: inline-flex; gap: 0.15rem; background: var(--surface-soft); border-radius: 999px; padding: 0.15rem; }
+.sort-toggle .pill { background: transparent; border: none; }
+.sort-toggle .pill.on { background: var(--accent); color: #fff; }
+.sec-total { color: var(--ink-muted); font-size: 0.8rem; padding-bottom: 0.2rem; }
+.c-item { border-bottom: 1px solid var(--border); }
+.srow .clickable { cursor: pointer; }
+.chevron { background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 0.2rem; font-size: 0.8rem; transition: transform 150ms; }
+.chevron.open { transform: rotate(90deg); }
+.tree-child { padding-inline-start: 1.3rem; display: flex; flex-direction: column; }
+.srow.ep { cursor: pointer; }
+.ep-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); font-size: 0.85rem; }
 </style>
