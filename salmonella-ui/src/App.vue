@@ -62,6 +62,7 @@ function evalLabel(target: string, kind: string): string {
 function evaluateLimits() {
   const used = new Map<string, number>()
   for (const l of dayLogs.value) {
+    if (l.event_type === 'system') continue
     const d = eventDuration(l, nowSec.value)
     used.set(`category:${l.category || 'other'}`, (used.get(`category:${l.category || 'other'}`) ?? 0) + d)
     used.set(`app:${l.app_name}`, (used.get(`app:${l.app_name}`) ?? 0) + d)
@@ -104,6 +105,7 @@ function selectDay(d: Date) {
 const ribbonSegs = computed(() => {
   const m = new Map<string, number>()
   for (const l of dayLogs.value) {
+    if (l.event_type === 'system') continue
     const cat = l.category || 'other'
     m.set(cat, (m.get(cat) ?? 0) + eventDuration(l))
   }
@@ -115,17 +117,20 @@ const ribbonSegs = computed(() => {
   <div id="shell" class="rtl">
     <header class="hdr">
       <div class="hdr-row">
-        <div class="brand">{{ t('app.brand') }}</div>
+        <div class="brand">
+          <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><defs><linearGradient id="rod-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8fb2"/><stop offset="1" stop-color="#e13057"/></linearGradient></defs><g transform="rotate(-12 12 12)"><g fill="none" stroke="#ff8fb2" stroke-width="0.7" stroke-linecap="round"><path d="M16.6 10.2c1.3-.5 2.2.2 3.4-.2"/><path d="M16.6 12c1.4-.2 2.3.5 3.7.1"/><path d="M16.6 13.8c1.3.4 2.2-.2 3.4.5"/></g><rect x="1.6" y="6.9" width="21.2" height="10.2" rx="5.1" fill="#fff" opacity=".9"/><rect x="2.6" y="7.9" width="19.2" height="8.2" rx="4.1" fill="url(#rod-g)"/><rect x="4.2" y="8.8" width="14.6" height="2.7" rx="1.35" fill="#fff" opacity=".22"/><circle cx="12" cy="12" r="4.2" fill="#faf6ef"/><g stroke="#e94560" stroke-width="0.6" stroke-linecap="round"><line x1="12" y1="7.8" x2="12" y2="9"/><line x1="16.2" y1="12" x2="15" y2="12"/><line x1="12" y1="16.2" x2="12" y2="15"/><line x1="7.8" y1="12" x2="9" y2="12"/></g><g stroke="#e94560" stroke-width="0.7" stroke-linecap="round"><line x1="12" y1="12" x2="13.9" y2="10.9"/><line x1="12" y1="12" x2="10.7" y2="11.3"/></g><circle cx="12" cy="12" r="0.8" fill="#e94560"/></g></svg>
+          <span class="brand-name">{{ t('app.brand') }}</span>
+        </div>
         <button v-if="view === 'dashboard'" class="icon-btn gear" :aria-label="t('settings.title')" @click="view = 'settings'">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
       </div>
 
-      <div v-if="error" class="error-banner" role="alert">
+      <div v-if="error" class="banner" role="alert">
         {{ t('app.error.fetch') }}
         <button class="btn primary small" @click="refresh">{{ t('app.error.retry') }}</button>
       </div>
-      <div v-if="overSet.size" class="over-banner" role="alert">
+      <div v-if="overSet.size" class="banner" role="alert">
         ⚠ {{ [...overSet.values()].join(' · ') }}
       </div>
     </header>
@@ -151,21 +156,17 @@ const ribbonSegs = computed(() => {
 </template>
 
 <style scoped>
-.hdr { padding: 0.9rem 0 0.5rem; }
-.hdr-row { display: flex; align-items: center; gap: 0.9rem; }
-.hdr .gear { margin-inline-start: auto; }
-.brand { font-size: 1.1rem; font-weight: 900; color: var(--accent); }
+.hdr { position: relative; padding: 1rem 0 0.6rem; }
+.hdr-row { display: flex; align-items: center; justify-content: center; }
+.hdr .gear { position: absolute; inset-inline-end: 0; top: 50%; transform: translateY(-50%); }
+.brand { font-size: 1.9rem; font-weight: 900; color: var(--accent); display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem; }
+.brand svg { flex-shrink: 0; }
+.brand-name { letter-spacing: -0.02em; }
 .btn.small { padding: 0.25rem 0.7rem; font-size: 0.75rem; }
-.error-banner {
+.banner {
   margin-top: 0.5rem; display: flex; align-items: center; gap: 0.8rem;
   background: var(--danger-soft); border: 1px solid var(--danger); border-radius: var(--radius-sm);
   padding: 0.45rem 0.9rem; color: var(--danger); font-size: 0.85rem; font-weight: 600;
-  animation: banner-in 200ms ease;
-}
-.over-banner {
-  margin-top: 0.5rem;
-  background: var(--danger-soft); border: 1px solid var(--danger); border-radius: var(--radius-sm);
-  padding: 0.45rem 0.9rem; color: var(--danger); font-size: 0.8rem; font-weight: 600;
   animation: banner-in 200ms ease;
 }
 @keyframes banner-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }

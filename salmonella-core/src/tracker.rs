@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::db::{Db, LogEvent};
@@ -15,11 +15,37 @@ pub fn unix_now() -> i64 {
         .as_secs() as i64
 }
 
+/// System lifecycle event fed to the tracker (e.g. logind sleep/wake).
+pub struct SysEvent {
+    pub kind: &'static str,
+    pub at: i64,
+}
+
+/// Thread-safe queue of pending system events, drained by the tracker loop.
+pub struct SysEvents(Mutex<Vec<SysEvent>>);
+
+impl SysEvents {
+    pub fn new() -> Self {
+        SysEvents(Mutex::new(Vec::new()))
+    }
+
+    pub fn push(&self, kind: &'static str, at: i64) {
+        self.0.lock().unwrap().push(SysEvent { kind, at });
+    }
+
+    pub fn drain(&self) -> Vec<SysEvent> {
+        std::mem::take(&mut *self.0.lock().unwrap())
+    }
+}
+
 /// Polls the backend once per second; on window change, closes the previous
 /// log entry, inserts a new one, and calls `on_change` (e.g. D-Bus signal).
+/// System events (sleep/wake/...) are processed before each poll; a stale
+/// heartbeat + a poll gap closes dangling entries at the suspend moment.
 pub fn run_tracker_loop<F>(
     db: Arc<Db>,
     mut backend: impl WindowSource,
+    sys: &SysEvents,
     mut on_change: F,
 ) where
     F: FnMut(&str, &str, i64),
@@ -27,11 +53,70 @@ pub fn run_tracker_loop<F>(
     let mut prev_app = String::new();
     let mut prev_title = String::new();
     let mut current_log_id: Option<i64> = None;
+    let mut sleep_open_id: Option<i64> = None;
 
-    db.close_dangling(unix_now());
+    let mut last_hb = unix_now();
+    let mut last_poll = unix_now();
+
+    // ponytail: no close_dangling here — callers (daemon main, Windows setup)
+    // run it BEFORE inserting point events, so fresh boot/login rows aren't
+    // closed (or closed at a stale last_alive → negative durations).
 
     loop {
         std::thread::sleep(Duration::from_secs(1));
+        let now = unix_now();
+
+        if now - last_hb >= 10 {
+            db.set_setting("last_alive", &now.to_string());
+            last_hb = now;
+        }
+
+        let gap = now - last_poll > 120;
+        let drained = sys.drain();
+        let handled_sleep = drained.iter().any(|e| e.kind == "sleep");
+
+        let close_log_at = |current: &mut Option<i64>, at: i64| {
+            if let Some(id) = current.take() {
+                db.close_log(id, at);
+            }
+        };
+
+        for ev in &drained {
+            match ev.kind {
+                "sleep" => {
+                    let at = if gap { last_poll } else { ev.at };
+                    close_log_at(&mut current_log_id, at);
+                    prev_app.clear();
+                    prev_title.clear();
+                    sleep_open_id = Some(db.insert_system_event("sleep", "", at, None));
+                }
+                "wake" => {
+                    if let Some(id) = sleep_open_id.take() {
+                        db.close_log(id, ev.at);
+                    }
+                    db.insert_system_event("wake", "", ev.at, Some(ev.at));
+                }
+                "power_off" | "logout" => {
+                    close_log_at(&mut current_log_id, ev.at);
+                    prev_app.clear();
+                    prev_title.clear();
+                    db.insert_system_event(ev.kind, "", ev.at, Some(ev.at));
+                }
+                _ => {}
+            }
+        }
+
+        // logind signal missed (loop was frozen through a suspend): close at
+        // the last known poll, log a closed sleep event covering the gap.
+        if gap && !handled_sleep {
+            close_log_at(&mut current_log_id, last_poll);
+            prev_app.clear();
+            prev_title.clear();
+            db.insert_system_event("sleep", "", last_poll, Some(now));
+        }
+
+        last_poll = now;
+
         let (app, title) = backend.active_window();
 
         // Don't track our own windows (the UI) — it would pollute the timeline
@@ -123,10 +208,11 @@ mod tests {
         let backend = FakeSource(vec![
             ("org.mozilla.firefox.desktop".into(), "عنوان - YouTube — Mozilla Firefox".into()),
         ], 0);
+        let sys = SysEvents::new();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut first = true;
-            run_tracker_loop(db.clone(), backend, |_, _, _| { if first { tx.send(()).unwrap(); first = false; } });
+            run_tracker_loop(db.clone(), backend, &sys, |_, _, _| { if first { tx.send(()).unwrap(); first = false; } });
         });
         rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -151,9 +237,10 @@ mod tests {
             ("org.mozilla.firefox.desktop".into(), "عنوان - YouTube — Mozilla Firefox".into()),
             ("org.gnome.Ptyxis.desktop".into(), "main.rs".into()),
         ], 0);
+        let sys = SysEvents::new();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            run_tracker_loop(db.clone(), backend, |app, _, _| {
+            run_tracker_loop(db.clone(), backend, &sys, |app, _, _| {
                 // فقط التطبيق غير المستبعد يطلق الإشارة
                 if app == "code.desktop" { tx.send(()).unwrap(); }
             });
@@ -165,6 +252,55 @@ mod tests {
         assert_eq!(rows.len(), 1, "التطبيق والموقع المستبعدان لا يُسجلان");
         assert_eq!(rows[0].app_name, "code.desktop");
         assert_eq!(rows[0].site, "", "الموقع المستبعد لا يظهر في صف الموقع الجديد");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn sleep_event_splits_active_entry() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-sleep-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        let backend = FakeSource(vec![("a.desktop".into(), "t".into())], 0);
+        let sys = std::sync::Arc::new(SysEvents::new());
+        let sys2 = sys.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            run_tracker_loop(db.clone(), backend, &sys2, |_, _, _| {
+                let _ = tx.send(());
+            });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+
+        let t = unix_now();
+        sys.push("sleep", t);
+        // على_change التالية تطلقها نفس الدورة التي تعالج النوم وتفتح إدخالاً جديداً
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        let first = rows.iter().find(|r| r.end_time == Some(t)).expect("entry before sleep");
+        assert_eq!(first.detail, "");
+        let sleep_row = rows.iter().find(|r| r.detail == "sleep").expect("sleep row");
+        assert_eq!(sleep_row.event_type, "system");
+        assert_eq!(sleep_row.start_time, t);
+        assert_eq!(sleep_row.end_time, None, "صف النوم مفتوح حتى الاستيقاظ");
+        let fresh = rows.iter().find(|r| r.detail.is_empty() && r.start_time >= t)
+            .expect("entry after wake");
+        assert_eq!(fresh.end_time, None, "إدخال جديد مفتوح بعد النوم");
+
+        let wake_t = unix_now();
+        sys.push("wake", wake_t);
+        // لا إشارة change_ عند المعالجة — استطلاع حتى يُغلق صف النوم
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let sleep_end = loop {
+            let rows = Db::open(&path).get_timeline(0, i64::MAX);
+            let end = rows.iter().find(|r| r.detail == "sleep").unwrap().end_time;
+            if end.is_some() { break end.unwrap(); }
+            if std::time::Instant::now() > deadline { panic!("sleep row never closed"); }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        let now = unix_now();
+        assert!(sleep_end >= wake_t && sleep_end <= now, "يُغلق عند لحظة الاستيقاظ");
         let _ = std::fs::remove_file(&path);
     }
 }

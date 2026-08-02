@@ -14,6 +14,7 @@ export interface LogEntry {
   category: string
   series: string
   episode: string
+  detail: string
 }
 
 export type Period = 'day' | 'week' | 'month'

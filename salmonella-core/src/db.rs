@@ -20,6 +20,7 @@ pub struct LogEntry {
     pub category: String,
     pub series: String,
     pub episode: String,
+    pub detail: String,
 }
 
 /// حمولة الإدراج في السجل.
@@ -44,6 +45,7 @@ const NEW_COLUMNS: &[(&str, &str)] = &[
     ("series", "TEXT DEFAULT ''"),
     ("episode", "TEXT DEFAULT ''"),
     ("site_friendly", "TEXT DEFAULT ''"),
+    ("detail", "TEXT DEFAULT ''"),
 ];
 
 impl Db {
@@ -148,12 +150,35 @@ impl Db {
     }
 
     /// Closes any entries left open by a previous run (crash/kill/reboot).
+    /// If the last-alive heartbeat is stale (>60s ago), dangling entries are
+    /// closed at that heartbeat instead of at boot, so an open entry doesn't
+    /// span a power cut / suspend.
     pub fn close_dangling(&self, now: i64) {
+        let last_alive: i64 = self.get_setting("last_alive")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let end = if last_alive > 0 && now - last_alive > 60 { last_alive } else { now };
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE activity_logs SET end_time=?1, duration=?1-start_time WHERE end_time IS NULL",
-            params![now],
+            params![end],
         ).unwrap();
+    }
+
+    /// Inserts a system event row (boot/login/logout/power_off/sleep/wake/...).
+    pub fn insert_system_event(&self, detail: &str, title: &str, start: i64, end: Option<i64>) -> i64 {
+        let conn = self.conn.lock().unwrap();
+        let (end_time, duration) = match end {
+            Some(e) => (Some(e), Some(e - start)),
+            None => (None, None),
+        };
+        conn.execute(
+            "INSERT INTO activity_logs(event_type,app_name,window_title,start_time,end_time,duration,
+                 friendly_name,site,site_friendly,category,series,episode,detail)
+             VALUES('system','',?1,?2,?3,?4,'','','','','','',?5)",
+            params![title, start, end_time, duration, detail],
+        ).ok();
+        conn.last_insert_rowid()
     }
 
     pub fn close_log(&self, id: i64, end: i64) {
@@ -169,7 +194,7 @@ impl Db {
     }
 
     const LOG_COLS: &'static str = "id,event_type,app_name,window_title,start_time,end_time,duration,
-        friendly_name,site,site_friendly,category,series,episode";
+        friendly_name,site,site_friendly,category,series,episode,detail";
 
     fn row_to_entry(r: &rusqlite::Row) -> rusqlite::Result<LogEntry> {
         Ok(LogEntry {
@@ -178,6 +203,7 @@ impl Db {
             end_time: r.get(5)?, duration: r.get(6)?,
             friendly_name: r.get(7)?, site: r.get(8)?, site_friendly: r.get(9)?,
             category: r.get(10)?, series: r.get(11)?, episode: r.get(12)?,
+            detail: r.get(13)?,
         })
     }
 
@@ -192,7 +218,8 @@ impl Db {
     pub fn get_status(&self) -> (i64, String, String) {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT start_time,app_name,window_title FROM activity_logs WHERE end_time IS NULL ORDER BY id DESC LIMIT 1",
+            "SELECT start_time,app_name,window_title FROM activity_logs
+             WHERE end_time IS NULL AND event_type != 'system' ORDER BY id DESC LIMIT 1",
             [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         ).unwrap_or_default()
     }
@@ -570,6 +597,68 @@ mod tests {
             "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![id],
             |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!((end, dur), (2000, 1000));
+    }
+
+    #[test] fn close_dangling_uses_last_alive_when_stale() {
+        // power cut: stale last_alive (5000) → dangling entry closes there, not at boot (10000)
+        let db1 = tmp_db("dangling-la1");
+        let id1 = db1.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
+        db1.set_setting("last_alive", "5000");
+        db1.close_dangling(10000);
+        let (end, dur): (i64, i64) = db1.conn.lock().unwrap().query_row(
+            "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![id1],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((end, dur), (5000, 4000));
+
+        // fresh last_alive (≤60s ago) → close at now
+        let db2 = tmp_db("dangling-la2");
+        let id2 = db2.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
+        db2.set_setting("last_alive", "9950");
+        db2.close_dangling(10000);
+        let (end, dur): (i64, i64) = db2.conn.lock().unwrap().query_row(
+            "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![id2],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((end, dur), (10000, 9000));
+
+        // no last_alive → close at now
+        let db3 = tmp_db("dangling-la3");
+        let id3 = db3.insert_log(&LogEvent { event_type: "app", category: "other", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "x", title: "y" }, 1000);
+        db3.close_dangling(10000);
+        let (end, dur): (i64, i64) = db3.conn.lock().unwrap().query_row(
+            "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![id3],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((end, dur), (10000, 9000));
+    }
+
+    #[test] fn insert_system_event_rows() {
+        let db = tmp_db("sysevent");
+        let id = db.insert_system_event("sleep", "", 1000, None);
+        let (ty, det, end, dur): (String, String, Option<i64>, Option<i64>) =
+            db.conn.lock().unwrap().query_row(
+                "SELECT event_type, detail, end_time, duration FROM activity_logs WHERE id=?1",
+                params![id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap();
+        assert_eq!(ty, "system");
+        assert_eq!(det, "sleep");
+        assert_eq!(end, None);
+        assert_eq!(dur, None);
+        assert_eq!(db.get_status(), (0, String::new(), String::new()),
+            "الصف النظامي المفتوح لا يُعرض كنشاط حالي");
+        db.close_log(id, 2000);
+        let (end, dur): (Option<i64>, Option<i64>) = db.conn.lock().unwrap().query_row(
+            "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![id],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(end, Some(2000));
+        assert_eq!(dur, Some(1000));
+
+        let boot = db.insert_system_event("boot", "", 3000, Some(3000));
+        let (end, dur): (Option<i64>, Option<i64>) = db.conn.lock().unwrap().query_row(
+            "SELECT end_time, duration FROM activity_logs WHERE id=?1", params![boot],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(end, Some(3000));
+        assert_eq!(dur, Some(0));
     }
 
     #[test] fn limits_crud() {

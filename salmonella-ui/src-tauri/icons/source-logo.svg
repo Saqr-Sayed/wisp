@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="rod" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff8fb2"/>
+      <stop offset="1" stop-color="#e13057"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="rotate(-12 512 512)">
+    <g fill="none" stroke="#ff8fb2" stroke-width="24" stroke-linecap="round">
+      <path d="M736 452 C 792 432, 828 462, 884 442"/>
+      <path d="M736 512 C 796 504, 836 536, 894 516"/>
+      <path d="M736 572 C 792 590, 828 562, 884 582"/>
+    </g>
+
+    <rect x="258" y="330" width="500" height="364" rx="182" fill="#fff" opacity="0.92"/>
+    <rect x="276" y="348" width="464" height="328" rx="164" fill="url(#rod)"/>
+    <rect x="300" y="370" width="416" height="110" rx="55" fill="#fff" opacity="0.22"/>
+
+    <circle cx="512" cy="512" r="142" fill="#faf6ef"/>
+    <g stroke="#e94560" stroke-width="20" stroke-linecap="round">
+      <line x1="512" y1="370" x2="512" y2="398"/>
+      <line x1="654" y1="512" x2="626" y2="512"/>
+      <line x1="512" y1="654" x2="512" y2="626"/>
+      <line x1="370" y1="512" x2="398" y2="512"/>
+    </g>
+    <g stroke="#e94560" stroke-width="24" stroke-linecap="round">
+      <line x1="512" y1="512" x2="580" y2="473"/>
+      <line x1="512" y1="512" x2="467" y2="486"/>
+    </g>
+    <circle cx="512" cy="512" r="28" fill="#e94560"/>
+  </g>
+</svg>

@@ -17,6 +17,7 @@ pub struct LogEntry {
     pub category: String,
     pub series: String,
     pub episode: String,
+    pub detail: String,
 }
 
 pub fn show_notification(body: &str) -> Result<(), String> {
@@ -32,7 +33,7 @@ pub fn show_notification(body: &str) -> Result<(), String> {
 mod commands {
     use super::LogEntry;
 
-    type Row = (i64, String, String, String, i64, i64, i64, String, String, String, String, String);
+    type Row = (i64, String, String, String, i64, i64, i64, String, String, String, String, String, String);
 
     fn to_log_entry(r: Row) -> LogEntry {
         LogEntry {
@@ -41,7 +42,7 @@ mod commands {
             end_time: (r.5 >= 0).then_some(r.5),
             duration: (r.6 >= 0).then_some(r.6),
             friendly_name: r.7, site: r.8, category: r.9,
-            series: r.10, episode: r.11,
+            series: r.10, episode: r.11, detail: r.12,
         }
     }
 
@@ -222,6 +223,7 @@ mod commands {
             category: e.category.clone(),
             series: e.series.clone(),
             episode: e.episode.clone(),
+            detail: e.detail.clone(),
         }
     }
 
@@ -390,7 +392,7 @@ pub fn run() {
     let builder = {
         use crate::windows_backend::{install_autostart, Win32Backend};
         use salmonella_core::db::Db;
-        use salmonella_core::tracker::run_tracker_loop;
+        use salmonella_core::tracker::{run_tracker_loop, unix_now, SysEvents};
         use std::sync::Arc;
         use tauri::tray::TrayIconBuilder;
         use tauri::{menu::{Menu, MenuItem}, Manager};
@@ -401,9 +403,11 @@ pub fn run() {
 
                 let db = Arc::new(Db::new());
                 app.manage(db.clone());
+                db.close_dangling(unix_now());
 
+                let sys = SysEvents::new();
                 std::thread::spawn(move || {
-                    run_tracker_loop(db, Win32Backend, |_, _, _| {});
+                    run_tracker_loop(db, Win32Backend, &sys, |_, _, _| {});
                 });
 
                 let show = MenuItem::with_id(app, "show", "إظهار", true, None::<&str>)?;

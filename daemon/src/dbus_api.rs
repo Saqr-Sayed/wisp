@@ -2,13 +2,13 @@ use std::sync::{Arc, Mutex};
 use salmonella_core::db::{Db, LogEntry};
 use zbus::{interface, object_server::SignalContext, ConnectionBuilder};
 
-type Row = (i64, String, String, String, i64, i64, i64, String, String, String, String, String);
+type Row = (i64, String, String, String, i64, i64, i64, String, String, String, String, String, String);
 
 fn to_row(e: &LogEntry) -> Row {
     (e.id, e.event_type.clone(), e.app_name.clone(), e.window_title.clone(),
      e.start_time, e.end_time.unwrap_or(-1), e.duration.unwrap_or(-1),
      e.friendly_name.clone(), e.site.clone(), e.category.clone(),
-     e.series.clone(), e.episode.clone())
+     e.series.clone(), e.episode.clone(), e.detail.clone())
 }
 
 #[derive(Clone)]

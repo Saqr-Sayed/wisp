@@ -14,11 +14,11 @@ export function weeksCount(logs: { start_time: number }[], cap = 8): number {
   return Math.max(1, Math.min(cap, weeks.size))
 }
 
-/** مجموع مدد السجلات الواقعة في نفس يوم الأسبوع المحلي لـ target */
-export function sameDowSum(logs: { start_time: number; duration?: number | null }[], target: Date): number {
+/** مجموع مدد السجلات الواقعة في نفس يوم الأسبوع المحلي لـ target (بدون أحداث النظام) */
+export function sameDowSum(logs: { start_time: number; duration?: number | null; event_type?: string }[], target: Date): number {
   const wd = dow(target)
   return logs
-    .filter(l => dow(new Date(l.start_time * 1000)) === wd)
+    .filter(l => l.event_type !== 'system' && dow(new Date(l.start_time * 1000)) === wd)
     .reduce((s, l) => s + (l.duration ?? 0), 0)
 }
 

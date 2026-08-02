@@ -18,7 +18,7 @@ function dayLogs(day: Date): LogEntry[] {
 }
 
 function dayTotal(day: Date): number {
-  return dayLogs(day).reduce((s, l) => s + eventDuration(l), 0)
+  return dayLogs(day).filter(l => l.event_type !== 'system').reduce((s, l) => s + eventDuration(l), 0)
 }
 
 /** مجموع تجاوزات حدود اليوم: لكل حد (تطبيق/فئة) المستخدم − الحد، تُجمع الموجبات وتُقيد بإجمالي اليوم */
@@ -27,7 +27,7 @@ function dayOverage(day: Date): number {
   let over = 0
   for (const [kind, target, minutes] of props.limits) {
     const used = logs
-      .filter(l => kind === 'app' ? l.app_name === target : (l.category || 'other') === target)
+      .filter(l => l.event_type !== 'system' && (kind === 'app' ? l.app_name === target : (l.category || 'other') === target))
       .reduce((s, l) => s + eventDuration(l), 0)
     if (used > minutes * 60) over += used - minutes * 60
   }
@@ -36,10 +36,10 @@ function dayOverage(day: Date): number {
 
 const dayTotals = computed(() => props.days.map(dayTotal))
 const weekTotal = computed(() => dayTotals.value.reduce((s, t) => s + t, 0))
-const selectedTotal = computed(() => props.dayLogs.reduce((s, l) => s + eventDuration(l), 0))
+const selectedTotal = computed(() => props.dayLogs.filter(l => l.event_type !== 'system').reduce((s, l) => s + eventDuration(l), 0))
 
 /** نافذة المتوسطات: تاريخ الثمانية أسابيع + الأسبوع الحالي (مثبتة على الحاضر) */
-const avgWindow = computed(() => [...props.history, ...props.curWeekLogs])
+const avgWindow = computed(() => [...props.history, ...props.curWeekLogs].filter(l => l.event_type !== 'system'))
 const avgDivisor = computed(() => weeksCount(avgWindow.value))
 const avgDayNow = computed(() => sameDowSum(avgWindow.value, props.selected) / avgDivisor.value)
 const avgWeek = computed(() => avgWindow.value.reduce((s, l) => s + eventDuration(l), 0) / avgDivisor.value)

@@ -33,6 +33,7 @@ async function setLang(v: 'auto' | 'ar' | 'en') {
 const usedMap = computed(() => {
   const m = new Map<string, number>()
   for (const l of props.todayLogs) {
+    if (l.event_type === 'system') continue
     const d = eventDuration(l)
     m.set(`category:${l.category}`, (m.get(`category:${l.category}`) ?? 0) + d)
     m.set(`app:${l.app_name}`, (m.get(`app:${l.app_name}`) ?? 0) + d)
@@ -209,6 +210,7 @@ async function setSiteLimit(x: KnownSite) {
       <button class="icon-btn" :aria-label="t('settings.back')" @click="emit('back')">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
       </button>
+      <svg class="s-logo" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><defs><linearGradient id="rod-g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8fb2"/><stop offset="1" stop-color="#e13057"/></linearGradient></defs><g transform="rotate(-12 12 12)"><g fill="none" stroke="#ff8fb2" stroke-width="0.7" stroke-linecap="round"><path d="M16.6 10.2c1.3-.5 2.2.2 3.4-.2"/><path d="M16.6 12c1.4-.2 2.3.5 3.7.1"/><path d="M16.6 13.8c1.3.4 2.2-.2 3.4.5"/></g><rect x="1.6" y="6.9" width="21.2" height="10.2" rx="5.1" fill="#fff" opacity=".9"/><rect x="2.6" y="7.9" width="19.2" height="8.2" rx="4.1" fill="url(#rod-g2)"/><circle cx="12" cy="12" r="4.2" fill="#faf6ef"/><g stroke="#e94560" stroke-width="0.6" stroke-linecap="round"><line x1="12" y1="7.8" x2="12" y2="9"/><line x1="16.2" y1="12" x2="15" y2="12"/><line x1="12" y1="16.2" x2="12" y2="15"/><line x1="7.8" y1="12" x2="9" y2="12"/></g><g stroke="#e94560" stroke-width="0.7" stroke-linecap="round"><line x1="12" y1="12" x2="13.9" y2="10.9"/><line x1="12" y1="12" x2="10.7" y2="11.3"/></g><circle cx="12" cy="12" r="0.8" fill="#e94560"/></g></svg>
       <b class="s-title">{{ t('settings.title') }}</b>
     </header>
 
@@ -394,9 +396,10 @@ async function setSiteLimit(x: KnownSite) {
 <style scoped>
 .settings-page { display: flex; flex-direction: column; gap: 0.9rem; flex: 1; min-height: 0; }
 .s-head { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0 0.2rem; }
+.s-logo { flex-shrink: 0; }
 .s-title { font-size: 1.05rem; font-weight: 900; }
 .s-body { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow-y: auto; padding-inline-end: 0.3rem; }
-.s-body .card { padding: 1.1rem 1.2rem; max-width: 760px; }
+.s-body .card { padding: 1.1rem 1.2rem; width: 100%; }
 .s-body .card h3 { font-size: 1rem; margin-bottom: 0.7rem; }
 .s-body .card h4 { font-size: 0.85rem; font-weight: 800; margin-bottom: 0.4rem; color: var(--ink-muted); }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
@@ -424,10 +427,11 @@ async function setSiteLimit(x: KnownSite) {
 .suggest code { font-size: 0.75rem; opacity: 0.8; }
 .cat-row, .item-row {
   display: flex; gap: 0.6rem; align-items: center; padding: 0.55rem 0;
-  border-bottom: 1px solid var(--border); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
 }
 .cat-row > code { font-size: 0.78rem; }
 .cname { flex: 1; min-width: 0; }
+.cat-row .row-limit { margin-inline-start: auto; }
 .row-limit { display: flex; gap: 0.4rem; align-items: center; }
 .limit-input {
   width: 76px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px;
@@ -439,12 +443,12 @@ async function setSiteLimit(x: KnownSite) {
   border-radius: 8px; padding: 0.4rem 0.6rem; color: var(--ink); font-family: inherit;
   font-size: 0.85rem; margin-bottom: 0.4rem;
 }
-.item-row { align-items: flex-start; flex-direction: column; gap: 0.4rem; }
+.item-row { align-items: center; justify-content: space-between; gap: 0.8rem; }
 .item-row.ignored { opacity: 0.6; }
-.item-main { display: flex; gap: 0.6rem; align-items: center; width: 100%; min-width: 0; }
-.item-main b { flex: 1; min-width: 0; }
-.item-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.owid { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; }
+.item-main { display: flex; gap: 0.6rem; align-items: center; flex: 1; min-width: 0; }
+.item-main b { flex: 0 1 auto; }
+.item-actions { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.owid { flex: 0 1 auto; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; }
 .edit-input { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px;
   padding: 0.3rem 0.5rem; color: var(--ink); font-family: inherit; font-size: 0.85rem; flex: 1; min-width: 120px; }
 .edit-input.narrow { flex: 0 1 140px; }
