@@ -166,7 +166,7 @@ impl Db {
         drop(conn); // ponytail: حرّر قفل migrate قبل استدعاء دوال تفتح conn بنفسها (std Mutex غير قابل لإعادة الدخول — دون drop سيتجمّد الاختبار)
         let was_seeded = self.seed_if_empty();
         let migrated = self.migrate_custom_categories();
-        if was_seeded || migrated {
+        if was_seeded || migrated || self.has_stale_category_rows() {
             self.reclassify_all();
         }
     }
@@ -541,6 +541,15 @@ impl Db {
         ).ok()
     }
 
+    fn has_stale_category_rows(&self) -> bool {
+        // ponytail: query واحدة عند كل إقلاع؛ reclassify يشفي slug الفئات العالقة من إقلاع أول متقطع
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT 1 FROM activity_logs WHERE event_type IN ('app','media')
+             AND category NOT IN (SELECT name FROM categories) LIMIT 1",
+            [], |r| r.get::<_, i64>(0)).ok().is_some()
+    }
+
     fn seed_if_empty(&self) -> bool {
         let conn = self.conn.lock().unwrap();
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM categories", [], |r| r.get(0)).unwrap();
@@ -602,7 +611,7 @@ impl Db {
                         VALUES(?1,'#8a7f6e',0,1,20)", params![&name]).ok();
                     conn.last_insert_rowid()
                 });
-            conn.execute("INSERT OR IGNORE INTO category_members(category_id,kind,target)
+            conn.execute("INSERT OR REPLACE INTO category_members(category_id,kind,target)
                 VALUES(?1,?2,?3)", params![cid, kind, target]).ok();
             conn.execute("DELETE FROM custom_categories WHERE id=?1", params![row_id]).ok();
             changed = true;
@@ -1037,6 +1046,40 @@ mod tests {
         let db = Db::open(&path);
         assert!(db.categories().iter().any(|c| c.name == "رسم"));
         assert_eq!(db.resolve_category("krita", "", ""), "رسم");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn boot_heals_stale_slug_categories() {
+        let path = std::env::temp_dir().join(format!("salmonella-stale-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let d1 = Db::open(&path);
+        d1.insert_log(&LogEvent { event_type: "app", category: "bogus", friendly: "فايرفوكس",
+            site: "", site_friendly: "", series: "", episode: "",
+            app: "org.mozilla.firefox.desktop", title: "t" }, 1000);
+        drop(d1);
+        let db = Db::open(&path);
+        let row = &db.get_timeline(0, 9999)[0];
+        assert!(db.categories().iter().all(|c| c.name != "bogus"), "bogus ليست فئة حقيقية");
+        assert!(db.categories().iter().any(|c| c.name == row.category),
+            "الصف العالق أُعيد تصنيفه لفئة حقيقية عند الإقلاع");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn custom_rule_replaces_seed_member_on_migrate() {
+        let path = std::env::temp_dir().join(format!("salmonella-custseed-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let d1 = Db::open(&path);
+        d1.add_custom_category("app", "telegram", "محادثة");
+        drop(d1);
+        let db = Db::open(&path);
+        assert_eq!(db.resolve_category("telegram", "", "social-media"), "محادثة",
+            "قاعدة المستخدم تحلّ محل عضو الزرعة ولا تُهمل");
+        let social = db.categories().iter().find(|c| c.name == "سوشيال ميديا").unwrap().clone();
+        let members = db.category_members(social.id);
+        assert!(members.iter().any(|(k, t)| k == "site" && t == "facebook"),
+            "بقية أعضاء الزرعة باقية");
         let _ = std::fs::remove_file(&path);
     }
 
