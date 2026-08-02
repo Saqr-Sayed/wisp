@@ -23,6 +23,16 @@ pub struct LogEntry {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Category {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub is_builtin: i64,
+    pub is_deletable: i64,
+    pub sort: i64,
+}
+
 /// حمولة الإدراج في السجل.
 pub struct LogEvent<'a> {
     pub event_type: &'a str,
@@ -97,6 +107,23 @@ impl Db {
                 display_name TEXT NOT NULL,
                 UNIQUE(kind, target)
             );
+            CREATE TABLE IF NOT EXISTS categories (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL UNIQUE,
+                slug         TEXT NOT NULL DEFAULT '',
+                color        TEXT NOT NULL DEFAULT '#8a7f6e',
+                is_builtin   INTEGER NOT NULL DEFAULT 0,
+                is_deletable INTEGER NOT NULL DEFAULT 1,
+                sort         INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS category_members (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+                kind        TEXT NOT NULL CHECK (kind IN ('app','site')),
+                target      TEXT NOT NULL,
+                UNIQUE (kind, target)
+            );
+            CREATE INDEX IF NOT EXISTS idx_member_lookup ON category_members(kind, target);
             CREATE TABLE IF NOT EXISTS ignored (
                 kind TEXT NOT NULL,
                 target TEXT NOT NULL,
@@ -136,6 +163,12 @@ impl Db {
         }
         conn.execute("CREATE INDEX IF NOT EXISTS idx_category ON activity_logs(category)", []).ok();
         conn.execute("CREATE INDEX IF NOT EXISTS idx_series ON activity_logs(series)", []).ok();
+        drop(conn); // ponytail: حرّر قفل migrate قبل استدعاء دوال تفتح conn بنفسها (std Mutex غير قابل لإعادة الدخول — دون drop سيتجمّد الاختبار)
+        let was_seeded = self.seed_if_empty();
+        let migrated = self.migrate_custom_categories();
+        if was_seeded || migrated {
+            self.reclassify_all();
+        }
     }
 
     pub fn insert_log(&self, e: &LogEvent, t: i64) -> i64 {
@@ -507,6 +540,193 @@ impl Db {
             params![kind, target], |r| r.get::<_, String>(0)
         ).ok()
     }
+
+    fn seed_if_empty(&self) -> bool {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM categories", [], |r| r.get(0)).unwrap();
+        if n > 0 { return false; }
+        let seeds: &[(&str, &str, &str, i64)] = &[
+            ("وسائط", "media", "#e94560", 0),
+            ("قراءة", "reading", "#16a34a", 1),
+            ("ألعاب", "games", "#9333ea", 2),
+            ("ترفيه", "entertainment", "#f59e0b", 3),
+            ("إنتاجية", "productivity", "#2563eb", 4),
+            ("تصفح", "browsing", "#64748b", 5),
+            ("سوشيال ميديا", "social-media", "#db2777", 6),
+            ("أخرى", "other", "#8a7f6e", 7),
+        ];
+        for (name, slug, color, sort) in seeds {
+            conn.execute("INSERT INTO categories(name,slug,color,is_builtin,is_deletable,sort)
+                          VALUES(?1,?2,?3,1,0,?4)", params![name, slug, color, *sort as i64]).ok();
+        }
+        let members: &[(&str, &str, &str)] = &[
+            ("media", "site", "youtube"), ("media", "site", "youtu"),
+            ("media", "site", "netflix"), ("media", "site", "shahid"),
+            ("media", "site", "vimeo"), ("media", "app", "mpv"),
+            ("media", "app", "vlc"), ("media", "app", "celluloid"),
+            ("media", "app", "totem"),
+            ("reading", "app", "evince"), ("reading", "app", "okular"),
+            ("reading", "app", "zathura"), ("reading", "app", "xreader"),
+            ("reading", "app", "foliate"), ("reading", "app", "calibre"),
+            ("games", "app", "steam"), ("games", "app", "lutris"),
+            ("games", "app", "heroic"), ("games", "app", "wine"),
+            ("productivity", "app", "ptyxis"), ("productivity", "app", "gnome-terminal"),
+            ("productivity", "app", "konsole"), ("productivity", "app", "code"),
+            ("productivity", "app", "codium"), ("productivity", "app", "cursor"),
+            ("productivity", "app", "gedit"), ("productivity", "app", "libreoffice"),
+            ("productivity", "app", "obsidian"),
+            ("social-media", "app", "telegram"), ("social-media", "app", "whatsapp"),
+            ("social-media", "app", "discord"), ("social-media", "app", "slack"),
+            ("social-media", "site", "facebook"), ("social-media", "site", "instagram"),
+            ("social-media", "site", "x"), ("social-media", "site", "twitter"),
+            ("social-media", "site", "tiktok"), ("social-media", "site", "snapchat"),
+        ];
+        for (slug, kind, target) in members {
+            conn.execute("INSERT INTO category_members(category_id,kind,target)
+                SELECT id,?2,?3 FROM categories WHERE slug=?1", params![slug, kind, target]).ok();
+        }
+        true
+    }
+
+    fn migrate_custom_categories(&self) -> bool {
+        let conn = self.conn.lock().unwrap();
+        let rows: Vec<(i64, String, String, String)> = conn.prepare(
+            "SELECT id, kind, target, display_name FROM custom_categories").unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap()
+            .filter_map(|r| r.ok()).collect();
+        let mut changed = false;
+        for (row_id, kind, target, name) in rows {
+            let cid: i64 = conn.query_row("SELECT id FROM categories WHERE name=?1",
+                params![&name], |r| r.get(0)).unwrap_or_else(|_| {
+                    conn.execute("INSERT INTO categories(name,color,is_builtin,is_deletable,sort)
+                        VALUES(?1,'#8a7f6e',0,1,20)", params![&name]).ok();
+                    conn.last_insert_rowid()
+                });
+            conn.execute("INSERT OR IGNORE INTO category_members(category_id,kind,target)
+                VALUES(?1,?2,?3)", params![cid, kind, target]).ok();
+            conn.execute("DELETE FROM custom_categories WHERE id=?1", params![row_id]).ok();
+            changed = true;
+        }
+        changed
+    }
+
+    pub fn categories(&self) -> Vec<Category> {
+        self.conn.lock().unwrap()
+            .prepare("SELECT id, name, color, is_builtin, is_deletable, sort
+                      FROM categories ORDER BY sort, id").unwrap()
+            .query_map([], |r| Ok(Category {
+                id: r.get(0)?, name: r.get(1)?, color: r.get(2)?,
+                is_builtin: r.get(3)?, is_deletable: r.get(4)?, sort: r.get(5)? })).unwrap()
+            .filter_map(|r| r.ok()).collect()
+    }
+
+    pub fn category_members(&self, id: i64) -> Vec<(String, String)> {
+        self.conn.lock().unwrap()
+            .prepare("SELECT kind, target FROM category_members WHERE category_id=?1
+                      ORDER BY kind, target").unwrap()
+            .query_map([id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+            .filter_map(|r| r.ok()).collect()
+    }
+
+    /// أولوية: member app → member site → slug → "أخرى".
+    pub fn resolve_category(&self, app: &str, site: &str, slug: &str) -> String {
+        let conn = self.conn.lock().unwrap();
+        let app_l = app.to_lowercase();
+        let app_hit: Option<String> = conn.prepare(
+            "SELECT c.name FROM category_members m JOIN categories c ON c.id=m.category_id
+             WHERE m.kind='app' AND ?1 <> '' AND INSTR(?1, LOWER(m.target)) > 0
+             ORDER BY LENGTH(m.target) DESC LIMIT 1").unwrap()
+            .query_row(params![&app_l], |r| r.get(0)).ok();
+        if let Some(n) = app_hit { return n; }
+        if !site.trim().is_empty() {
+            let s_l = site.trim().to_lowercase();
+            let slug_hit: Option<String> = conn.prepare(
+                "SELECT c.name FROM category_members m JOIN categories c ON c.id=m.category_id
+                 WHERE m.kind='site' AND LOWER(m.target) = ?1 LIMIT 1").unwrap()
+                .query_map(params![&s_l], |r| r.get(0)).unwrap()
+                .find_map(|r| r.ok());
+            if let Some(n) = slug_hit { return n; }
+        }
+        conn.query_row("SELECT name FROM categories WHERE slug=?1 LIMIT 1",
+            params![slug], |r| r.get(0)).unwrap_or_else(|_|
+            conn.query_row("SELECT name FROM categories WHERE slug='other'", [],
+                |r| r.get(0)).unwrap_or_else(|_| "أخرى".to_string()))
+    }
+
+    pub fn add_category(&self, name: &str, color: &str) -> i64 {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("INSERT INTO categories(name,color,is_builtin,is_deletable,sort)
+            VALUES(?1,?2,0,1,20)", params![name, color]).ok();
+        conn.last_insert_rowid()
+    }
+
+    pub fn rename_category(&self, id: i64, new_name: &str) {
+        let conn = self.conn.lock().unwrap();
+        let old: String = conn.query_row("SELECT name FROM categories WHERE id=?1",
+            params![id], |r| r.get(0)).unwrap_or_default();
+        if old.is_empty() || old == new_name { return; }
+        conn.execute("UPDATE categories SET name=?1 WHERE id=?2", params![new_name, id]).ok();
+        conn.execute("UPDATE activity_logs SET category=?1 WHERE category=?2", params![new_name, old]).ok();
+    }
+
+    pub fn set_category_color(&self, id: i64, color: &str) {
+        self.conn.lock().unwrap().execute(
+            "UPDATE categories SET color=?1 WHERE id=?2", params![color, id]).ok();
+    }
+
+    pub fn add_category_member(&self, id: i64, kind: &str, target: &str) {
+        let t = target.trim().to_lowercase();
+        if t.is_empty() { return; }
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute("INSERT OR IGNORE INTO category_members(category_id,kind,target)
+                VALUES(?1,?2,?3)", params![id, kind, t]).ok();
+        }
+        self.reclassify_all();
+    }
+
+    pub fn delete_category_member(&self, kind: &str, target: &str) {
+        let t = target.to_lowercase();
+        {
+            let conn = self.conn.lock().unwrap();
+            conn.execute("DELETE FROM category_members WHERE kind=?1 AND target=?2", params![kind, t]).ok();
+        }
+        self.reclassify_all();
+    }
+
+    pub fn delete_category(&self, id: i64) -> bool {
+        let conn = self.conn.lock().unwrap();
+        let deletable: Option<i64> = conn.query_row(
+            "SELECT is_deletable FROM categories WHERE id=?1", params![id], |r| r.get(0)).ok();
+        if deletable != Some(1) { return false; }
+        let old: String = conn.query_row("SELECT name FROM categories WHERE id=?1",
+            params![id], |r| r.get(0)).unwrap_or_default();
+        let other: String = conn.query_row("SELECT name FROM categories WHERE slug='other'", [],
+            |r| r.get(0)).unwrap_or_else(|_| "أخرى".to_string());
+        conn.execute("UPDATE activity_logs SET category=?1 WHERE category=?2", params![&other, &old]).ok();
+        conn.execute("DELETE FROM categories WHERE id=?1", params![id]).ok();
+        true
+    }
+
+    pub fn reclassify_all(&self) {
+        let rows: Vec<(i64, String, String)> = {
+            // ponytail: conn.prepare ضمن التعبير الأخير لا يترجم — الـ Statement يبقى
+            // مقترضاً من الحارس حتى نهاية الكتلة؛ الإنشاء في جملة مستقلة كـ backfill_sites.
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT id, app_name, window_title FROM activity_logs
+                WHERE event_type IN ('app','media')").unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        let mapped: Vec<(i64, String)> = rows.iter().map(|(id, app, title)| {
+            let e = crate::classifier::enrich(app, title);
+            (*id, self.resolve_category(app, &e.site, e.category))
+        }).collect();
+        let conn = self.conn.lock().unwrap();
+        for (id, name) in mapped {
+            conn.execute("UPDATE activity_logs SET category=?1 WHERE id=?2", params![name, id]).ok();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -682,6 +902,96 @@ mod tests {
         assert!(db.match_custom_category("site", "").is_none());
         db.remove_custom_category(id);
         assert!(db.list_custom_categories().is_empty());
+    }
+
+    #[test]
+    fn seed_creates_eight_categories() {
+        let db = tmp_db("cat-seed");
+        let cats = db.categories();
+        assert_eq!(cats.len(), 8);
+        for n in ["سوشيال ميديا", "ترفيه", "وسائط", "أخرى"] {
+            assert!(cats.iter().any(|c| c.name == n), "missing {n}");
+        }
+        let social = cats.iter().find(|c| c.name == "سوشيال ميديا").unwrap().clone();
+        let members = db.category_members(social.id);
+        assert!(members.iter().any(|(k, t)| k == "site" && t == "facebook"));
+        assert!(members.iter().any(|(k, t)| k == "app" && t == "telegram"));
+        let media = cats.iter().find(|c| c.name == "وسائط").unwrap();
+        assert_eq!(media.is_deletable, 0);
+    }
+
+    #[test]
+    fn member_match_wins_over_slug() {
+        let db = tmp_db("cat-wins");
+        let dev = db.add_category("تطوير", "#ff0000");
+        db.add_category_member(dev, "app", "code.desktop");
+        assert_eq!(db.resolve_category("code.desktop", "", "productivity"), "تطوير");
+        assert_eq!(db.resolve_category("org.mozilla.firefox.desktop", "facebook", "browsing"),
+                   "سوشيال ميديا");
+    }
+
+    #[test]
+    fn resolve_falls_back_to_slug_then_other() {
+        let db = tmp_db("cat-fallback");
+        assert_eq!(db.resolve_category("games", "vlc", "media"), "وسائط"); // site "vlc" لا يوجد → slug media
+        assert_eq!(db.resolve_category("evince", "", "reading"), "قراءة");
+        assert_eq!(db.resolve_category("whatever", "", "nonsense"), "أخرى");
+    }
+
+    #[test]
+    fn rename_updates_history() {
+        let db = tmp_db("cat-ren");
+        db.insert_log(&LogEvent { event_type: "media", category: "وسائط", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "mpv", title: "x.mp4" }, 1000);
+        let media = db.categories().iter().find(|c| c.name == "وسائط").unwrap().clone();
+        db.rename_category(media.id, "فيديو");
+        assert_eq!(db.get_timeline(0, 2000)[0].category, "فيديو");
+        assert_eq!(db.resolve_category("mpv", "out", "media"), "فيديو");
+    }
+
+    #[test]
+    fn reclassify_rebinds_after_member_change() {
+        // ponytail: زمن neovim أعلى من steam لأن get_timeline يرجع تنازلياً — البريف
+        // خلط الترتيب فكان التوقع معكوساً على idx0.
+        let db = tmp_db("cat-reclass");
+        db.insert_log(&LogEvent { event_type: "app", category: "productivity", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "steam", title: "CS" }, 1000);
+        db.insert_log(&LogEvent { event_type: "app", category: "games", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "neovim", title: "x.rs" }, 2000);
+        db.reclassify_all();
+        assert_eq!(db.get_timeline(0, 3000)[0].category, "إنتاجية");
+        let reading = db.categories().iter().find(|c| c.name == "قراءة").unwrap().clone();
+        db.add_category_member(reading.id, "app", "neovim");
+        let rows = db.get_timeline(0, 3000);
+        assert_eq!(rows[0].category, "قراءة", "إعادة التصنيف تغيّره");
+        assert_eq!(rows[1].category, "ألعاب", "الآخر ثابت");
+    }
+
+    #[test]
+    fn delete_extra_category_maps_rows_to_other() {
+        let db = tmp_db("cat-del");
+        let id = db.add_category("مخصصة", "#00ff00");
+        db.add_category_member(id, "app", "minegames");
+        let ok = db.delete_category(id);
+        assert!(ok);
+        assert!(!db.categories().iter().any(|c| c.id == id));
+        // المدمج لا يُحذف
+        let media = db.categories().iter().find(|c| c.name == "وسائط").unwrap().clone();
+        assert!(!db.delete_category(media.id));
+    }
+
+    #[test]
+    fn custom_categories_migrate_into_categories() {
+        // الزرعة والترحيل يجريان في migrate() عند فتح DB — نعيد الفتح على المسار نفسه
+        let path = std::env::temp_dir().join("salmonella-cat-mig2.db");
+        let _ = std::fs::remove_file(&path);
+        let d1 = Db::open(&path);
+        d1.add_custom_category("app", "krita", "رسم");
+        drop(d1);
+        let db = Db::open(&path);
+        assert!(db.categories().iter().any(|c| c.name == "رسم"));
+        assert_eq!(db.resolve_category("krita", "", ""), "رسم");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test] fn site_overrides_crud() {
