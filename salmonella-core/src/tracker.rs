@@ -3,6 +3,16 @@ use std::time::Duration;
 
 use crate::db::{Db, LogEvent};
 
+/// ميتاداتا وسائط يقدمها خطاف metadata (MPRIS + توقيع ملف في الـ daemon؛
+/// ويندوز والاختبارات يمررون &|_, _| None).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MediaMime { Audio, Video }
+
+pub struct MediaMeta {
+    pub title: Option<String>,
+    pub mime: Option<MediaMime>,
+}
+
 /// Source of the currently focused window (app id/name, window title).
 pub trait WindowSource: Send {
     fn active_window(&mut self) -> (String, String);
@@ -46,6 +56,7 @@ pub fn run_tracker_loop<F>(
     db: Arc<Db>,
     mut backend: impl WindowSource,
     sys: &SysEvents,
+    metadata: &dyn Fn(&str, &str) -> Option<MediaMeta>,
     mut on_change: F,
 ) where
     F: FnMut(&str, &str, i64),
@@ -146,7 +157,25 @@ pub fn run_tracker_loop<F>(
                 db.close_log(id, now);
             }
 
-            let enriched = crate::classifier::enrich(&app, &title);
+            // ميتاداتا الوسائط (MPRIS/توقيع ملف) تُقرأ قبل enrich: العنوان
+            // البديل يحل محل العام، وتجاوز mime يقع بعد enrich بحارس is_media_app
+            let meta = metadata(&app, &title);
+            let effective_title = if crate::classifier::is_generic_title(&app, &title) {
+                meta.as_ref().and_then(|m| m.title.clone()).unwrap_or_else(|| title.clone())
+            } else {
+                title.clone()
+            };
+
+            let mut enriched = crate::classifier::enrich(&app, &effective_title);
+            // تجاوز mime (القرار 9): مشغلات الوسائط فقط — القراءة (Papers/Evince)
+            // والمتصفحات خارج is_media_app فلا يُتجاوز تصنيفها أبداً
+            if crate::classifier::is_media_app(&app) {
+                match meta.as_ref().and_then(|m| m.mime) {
+                    Some(MediaMime::Audio) => enriched.media_kind = "listening",
+                    Some(MediaMime::Video) => enriched.media_kind = "watching",
+                    None => {}
+                }
+            }
             // مستبعد: أغلِق الحدث الجاري ولا تسجّل، دون إطلاق إشارة التغيير
             if db.is_ignored("app", &app) || db.is_ignored("site", &enriched.site) {
                 if let Some(id) = current_log_id {
@@ -175,7 +204,7 @@ pub fn run_tracker_loop<F>(
                 series: &series,
                 episode: &enriched.episode,
                 app: &app,
-                title: &title,
+                title: &effective_title,
             };
             current_log_id = Some(db.insert_log(&log_event, now));
             on_change(&app, &title, now);
@@ -224,7 +253,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut first = true;
-            run_tracker_loop(db.clone(), backend, &sys, |_, _, _| { if first { tx.send(()).unwrap(); first = false; } });
+            run_tracker_loop(db.clone(), backend, &sys, &|_, _| None, |_, _, _| { if first { tx.send(()).unwrap(); first = false; } });
         });
         rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -252,7 +281,7 @@ mod tests {
         let sys = SysEvents::new();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            run_tracker_loop(db.clone(), backend, &sys, |app, _, _| {
+            run_tracker_loop(db.clone(), backend, &sys, &|_, _| None, |app, _, _| {
                 // فقط التطبيق غير المستبعد يطلق الإشارة
                 if app == "code.desktop" { tx.send(()).unwrap(); }
             });
@@ -277,7 +306,7 @@ mod tests {
         let sys2 = sys.clone();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            run_tracker_loop(db.clone(), backend, &sys2, |_, _, _| {
+            run_tracker_loop(db.clone(), backend, &sys2, &|_, _| None, |_, _, _| {
                 let _ = tx.send(());
             });
         });
@@ -329,7 +358,7 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut n = 0;
-            run_tracker_loop(db.clone(), backend, &sys, |_, _, _| {
+            run_tracker_loop(db.clone(), backend, &sys, &|_, _| None, |_, _, _| {
                 n += 1;
                 if n == 2 { tx.send(()).unwrap(); }
             });
@@ -373,7 +402,7 @@ mod tests {
         let sys = SysEvents::new();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            run_tracker_loop(db.clone(), backend, &sys, |_, _, _| { let _ = tx.send(()); });
+            run_tracker_loop(db.clone(), backend, &sys, &|_, _| None, |_, _, _| { let _ = tx.send(()); });
         });
         rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -381,6 +410,89 @@ mod tests {
         let rows = db.get_timeline(0, i64::MAX);
         assert_eq!(rows[0].series, "تفسير آية الكرسي", "التجاوز الصريح يغلب المحلَّلة");
         assert_eq!(rows[0].episode, "2", "الحلقة تبقى من enrich — التجاوز لا يمسّها");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn media_kind_of(path: &std::path::Path, window_title: &str) -> String {
+        rusqlite::Connection::open(path).unwrap().query_row(
+            "SELECT media_kind FROM activity_logs WHERE window_title=?1 ORDER BY id DESC LIMIT 1",
+            [window_title], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn mpris_audio_overrides_watching() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-mpris-a-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        let backend = FakeSource(vec![
+            ("mpv.desktop".into(), "أغنية بلا امتداد - mpv".into()),
+        ], 0);
+        let sys = SysEvents::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let meta = |_: &str, _: &str| Some(MediaMeta { title: None, mime: Some(MediaMime::Audio) });
+            run_tracker_loop(db.clone(), backend, &sys, &meta, |_, _, _| { let _ = tx.send(()); });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(media_kind_of(&path, "أغنية بلا امتداد - mpv"), "listening",
+            "تجاوز mime الصوتي يغلب watching من فرع المشغل");
+        assert_eq!(rows[0].window_title, "أغنية بلا امتداد - mpv",
+            "العنوان غير العام لا يُستبدل");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn mpris_title_substituted_for_generic() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-mpris-t-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        let backend = FakeSource(vec![
+            ("org.gnome.Showtime.desktop".into(), "Video Player".into()),
+        ], 0);
+        let sys = SysEvents::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let meta = |_: &str, _: &str| Some(MediaMeta { title: Some("فيلم".to_string()),
+                mime: Some(MediaMime::Video) });
+            run_tracker_loop(db.clone(), backend, &sys, &meta, |_, _, _| { let _ = tx.send(()); });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(rows[0].window_title, "فيلم", "العنوان البديل يحل محل العام");
+        assert_eq!(media_kind_of(&path, "فيلم"), "watching");
+        assert_eq!(rows[0].series, "", "كشف الحلقة على العنوان الحقيقي — بلا سلسلة");
+        assert_eq!(rows[0].episode, "");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn mpris_never_overrides_reading() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-mpris-r-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        let backend = FakeSource(vec![
+            ("org.gnome.Papers.desktop".into(), "رسالة في الطريق الي ثقافتنا.pdf".into()),
+        ], 0);
+        let sys = SysEvents::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let meta = |_: &str, _: &str| Some(MediaMeta { title: Some("x".to_string()),
+                mime: Some(MediaMime::Video) });
+            run_tracker_loop(db.clone(), backend, &sys, &meta, |_, _, _| { let _ = tx.send(()); });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(media_kind_of(&path, "رسالة في الطريق الي ثقافتنا.pdf"), "reading",
+            "Papers خارج is_media_app — لا تجاوز");
+        assert_eq!(rows[0].window_title, "رسالة في الطريق الي ثقافتنا.pdf",
+            "العنوان غير العام لا يُستبدل حتى مع mime");
         let _ = std::fs::remove_file(&path);
     }
 }

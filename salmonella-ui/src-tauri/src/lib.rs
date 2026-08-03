@@ -508,7 +508,7 @@ pub fn run() {
 
                 let sys = SysEvents::new();
                 std::thread::spawn(move || {
-                    run_tracker_loop(db, Win32Backend, &sys, |_, _, _| {});
+                    run_tracker_loop(db, Win32Backend, &sys, &|_, _| None, |_, _, _| {});
                 });
 
                 let show = MenuItem::with_id(app, "show", "إظهار", true, None::<&str>)?;
