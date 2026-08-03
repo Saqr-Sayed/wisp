@@ -161,7 +161,7 @@ async fn main() {
     let sys2 = sys.clone();
     std::thread::spawn(move || {
         let backend = wait_for_backend();
-        run_tracker_loop(db2, backend, &sys2, &|_, _| None, move |app, title, now| {
+        run_tracker_loop(db2, backend, &sys2, &|app, _| mpris::probe(app), move |app, title, now| {
             let handle = handle.clone();
             let app = app.to_string();
             let title = title.to_string();
