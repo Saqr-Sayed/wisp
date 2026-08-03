@@ -98,9 +98,14 @@ pub fn probe(app_id: &str) -> Option<MediaMeta> {
     if !classifier::is_media_app(app_id) { return None; }
     let bus = derive_bus_name(app_id)?;
     let conn = Connection::session().ok()?;
-    if let Some(m) = meta_for(&conn, &bus) { return Some(m); }
+    let names = list_mpris_names(&conn);
+    // الاسم المشتق موجود → عُد بميتاداتاه كما هي (None لموقوف/فارغ) بلا سقوط
+    // لمشغل آخر — يمنع إسناد ميتاداتا mpv إلى Showtime المتوقف (القرار 10).
+    if names.iter().any(|n| n.eq_ignore_ascii_case(&bus)) {
+        return meta_for(&conn, &bus);
+    }
     // سقوط: أي مشغل MPRIS آخر يطابق اللاحقة (يغطي اختلاف تسمية Showtime وغيره)
-    for alt in list_mpris_names(&conn) {
+    for alt in names {
         if let Some(m) = meta_for(&conn, &alt) { return Some(m); }
     }
     None
