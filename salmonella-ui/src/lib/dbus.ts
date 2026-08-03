@@ -165,3 +165,6 @@ export async function clearSeries(title: string) { return invoke('clear_series',
 export async function listIgnored(): Promise<[string, string][]> { return invoke('list_ignored') }
 export async function ignoreTarget(kind: 'app' | 'site', target: string) { return invoke('ignore_target', { kind, target }) }
 export async function unignoreTarget(kind: 'app' | 'site', target: string) { return invoke('unignore_target', { kind, target }) }
+export async function archiveTarget(kind: 'app' | 'site', target: string) { return invoke('archive_target', { kind, target }) }
+export async function unarchiveTarget(kind: 'app' | 'site', target: string) { return invoke('unarchive_target', { kind, target }) }
+export async function getArchived(): Promise<[string, string][]> { return invoke('list_archived') }
