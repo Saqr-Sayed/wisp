@@ -160,6 +160,8 @@ export async function removeSiteOverride(site: string) { return invoke('remove_s
 export async function getSeriesOverrides(): Promise<[string, string][]> { return invoke('get_series_overrides') }
 export async function setSeriesOverride(pattern: string, name: string) { return invoke('set_series_override', { pattern, name }) }
 export async function removeSeriesOverride(pattern: string) { return invoke('remove_series_override', { pattern }) }
+export async function renameSeries(old: string, newName: string) { return invoke('rename_series', { old, new: newName }) }
+export async function clearSeries(title: string) { return invoke('clear_series', { title }) }
 export async function listIgnored(): Promise<[string, string][]> { return invoke('list_ignored') }
 export async function ignoreTarget(kind: 'app' | 'site', target: string) { return invoke('ignore_target', { kind, target }) }
 export async function unignoreTarget(kind: 'app' | 'site', target: string) { return invoke('unignore_target', { kind, target }) }

@@ -31,6 +31,8 @@
   "analysis.episode": "حلقة",
   "analysis.episodePlural": "حلقة",
   "analysis.episodesCount": "{n} حلقة",
+  "analysis.edit.rename": "إعادة تسمية",
+  "analysis.edit.seriesPlaceholder": "اسم السلسلة…",
   "analysis.empty.episodes": "📊 لا حلقات في هذه الفترة",
   "analysis.empty.data": "📊 لا بيانات في هذه الفترة",
   "analysis.groupBy.app": "تطبيق",

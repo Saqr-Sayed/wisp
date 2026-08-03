@@ -31,6 +31,8 @@
   "analysis.episode": "episode",
   "analysis.episodePlural": "episodes",
   "analysis.episodesCount": "{n} episodes",
+  "analysis.edit.rename": "Rename",
+  "analysis.edit.seriesPlaceholder": "Series name…",
   "analysis.empty.episodes": "📊 No episodes in this period",
   "analysis.empty.data": "📊 No data in this period",
   "analysis.groupBy.app": "App",
