@@ -73,6 +73,13 @@ fn strip_suffix(title: &str, suffixes: &[&str]) -> String {
             return title[..title.len() - s.len()].trim().to_string();
         }
     }
+    // ponytail: عنوان مساوٍ للاحقة ذاتها بلا مسافة البادئة (mpv الخامل:
+    // "- mpv" مقابل " - mpv") — ends_with لا يطابق، والمقصود قص كامل
+    // (القرار 14: "فارغ بعد القص"). لا أثر على عناوين المحتوى الحقيقية.
+    let t = lower.trim();
+    if suffixes.iter().any(|s| t == s.trim()) {
+        return String::new();
+    }
     title.trim().to_string()
 }
 
@@ -86,6 +93,34 @@ const FILE_MANAGERS: &[&str] = &["nautilus", "nemo", "thunar", "dolphin"];
 /// مدير ملفات؟ الأسماء المجردة فقط — الاحتواء is_app يغطي المعرفات الكاملة
 /// ("nautilus" ⊂ "org.gnome.nautilus.desktop").
 pub fn is_file_manager(app: &str) -> bool { is_app(app, FILE_MANAGERS) }
+
+/// عناوين عامة معروفة لا تمثل محتوى — أسماء نافذة افتراضية لمشغلات لا تعرض
+/// اسم الملف. "foliate" حزام أمان زائد (مغطاة بقاعدة الاسم الصغير)؛
+/// "video player" ضروري — short_name(Showtime) = "showtime" ≠ "video player".
+const GENERIC_TITLES: &[&str] = &["video player", "foliate"];
+
+/// اتحاد لواحق فرعي الصوت والفيديو في enrich — للقص اليدوي في
+/// is_generic_title بلا استدعاء clean_title (انظر الملاحظة أدناه).
+const PLAYER_SUFFIXES: &[&str] = &[" - mpv", " - VLC media player", " - Celluloid", " - Totem",
+    " - spotify", " - lollypop", " - strawberry", " - cmus", " - audacious", " - ncspot",
+    " - rhythmbox"];
+
+/// عنوان عام لا يمثل محتوى؟: فارغ بعد قص لاحقة المشغل، أو يساوي الاسم الصغير
+/// للتطبيق (آخر مقطع بعد النقطة بعد قص .desktop — غير حساس لحالة الأحرف)،
+/// أو في قائمة GENERIC_TITLES (مقارنة بحرف صغير).
+pub fn is_generic_title(app: &str, title: &str) -> bool {
+    // ponytail: القص اليدوي بدل clean_title (انحراف محسوم عن القرار 14):
+    // clean_title = enrich، وفروع enrich المحروسة تستدعي is_generic_title
+    // لنفس (app, title) → عودية لا نهائية. نفس النتيجة لكل حالات الحارس —
+    // اللواحق هنا هي نفسها التي تقصها فروع المشغلات.
+    let cleaned = strip_suffix(title, PLAYER_SUFFIXES);
+    let c = cleaned.trim().to_lowercase();
+    c.is_empty() || c == short_name(app) || GENERIC_TITLES.iter().any(|g| c == *g)
+}
+
+/// مشغل وسائط؟ (فيديو أو صوت) — حارس تجاوز mime في المتتبع (القرار 9):
+/// القراءة (Papers/Evince) والمتصفحات خارج القائمتين فلا يُتجاوز تصنيفها أبداً.
+pub fn is_media_app(app: &str) -> bool { is_app(app, VIDEO_PLAYERS) || is_app(app, AUDIO_PLAYERS) }
 
 /// يحوّل أرقاماً عربية-هندية (٢٦) إلى لاتينية (26) في النص.
 fn normalize_digits(s: &str) -> String {
@@ -217,24 +252,28 @@ pub fn enrich(app_name: &str, window_title: &str) -> Enriched {
             title_cleaned: window_title.to_string() };
     }
 
-    // قراءة: امتداد مستند أو تطبيق قارئ
-    if DOC_EXTS.iter().any(|e| title_lower.contains(e)) || is_app(app_name, READERS) {
+    // قراءة: امتداد مستند غير مشروط بالحارس (عنوان ".pdf" محتوى حتى من تطبيق
+    // عامّي — القرار 15)، أو تطبيق قارئ بعنوان غير عام
+    if DOC_EXTS.iter().any(|e| title_lower.contains(e))
+        || (is_app(app_name, READERS) && !is_generic_title(app_name, window_title)) {
         return Enriched { event_type: "app", category: "reading", media_kind: "reading", series_weak: true,
             site: String::new(), series: String::new(), episode: String::new(),
             title_cleaned: window_title.to_string() };
     }
 
-    // استماع: مشغل صوت أو امتداد صوتي في العنوان — يسبق فرع مشغلات الفيديو
-    // (mpv + "song.mp3" → استماع بغلبة الامتداد؛ mpv + "movie.mkv" → مشاهدة)
-    if is_app(app_name, AUDIO_PLAYERS) || AUDIO_EXTS.iter().any(|e| title_lower.contains(e)) {
+    // استماع: امتداد صوتي في العنوان غير مشروط (يسبق فرع مشغلات الفيديو —
+    // mpv + "song.mp3" → استماع بغلبة الامتداد)، أو مشغل صوت بعنوان غير عام
+    if AUDIO_EXTS.iter().any(|e| title_lower.contains(e))
+        || (is_app(app_name, AUDIO_PLAYERS) && !is_generic_title(app_name, window_title)) {
         let title = strip_suffix(window_title, AUDIO_SUFFIXES);
         return Enriched { event_type: "media", category: "listening", media_kind: "listening",
             series_weak: true, site: String::new(), series: String::new(), episode: String::new(),
             title_cleaned: title };
     }
 
-    // مشغلات فيديو: لاحقة المشغل تُحذف ثم كشف الحلقة
-    if is_app(app_name, VIDEO_PLAYERS) {
+    // مشغلات فيديو: لاحقة المشغل تُحذف ثم كشف الحلقة — بعنوان غير عام فقط؛
+    // حجب الحارس يسقط إلى خريطة التطبيقات أدناه (media_kind="")
+    if is_app(app_name, VIDEO_PLAYERS) && !is_generic_title(app_name, window_title) {
         let title = strip_suffix(window_title, &[" - mpv", " - VLC media player", " - Celluloid", " - Totem"]);
         let (series, episode, weak) = parse_episode(&title);
         let category = "media";
@@ -443,10 +482,13 @@ mod tests {
         assert_eq!(e.category, "reading");
     }
 
-    #[test] fn showtime_video_reaches_watching() {
+    #[test]
+    fn showtime_generic_title_is_not_content() {
+        // (أعيدت تسمية showtime_video_reaches_watching — تغيّر المعنى: حارس
+        // العنوان العام يوقف فرع المشغل ويسقط إلى خريطة التطبيقات)
         let e = enrich("org.gnome.Showtime.desktop", "Video Player");
         assert_eq!(e.event_type, "media");
-        assert_eq!(e.media_kind, "watching");
+        assert_eq!(e.media_kind, "");
         assert_eq!(e.series, "");
     }
 
@@ -470,5 +512,36 @@ mod tests {
         assert!(is_file_manager("org.nemo.Nemo"));
         assert!(is_file_manager("org.kde.dolphin"));
         assert!(!is_file_manager("mpv"));
+    }
+
+    #[test]
+    fn showtime_real_title_still_watching() {
+        let e = enrich("org.gnome.Showtime.desktop", "فيلم");
+        assert_eq!(e.media_kind, "watching");
+    }
+
+    #[test]
+    fn generic_title_empty_after_clean() {
+        let e = enrich("mpv.desktop", "- mpv");
+        assert_eq!(e.media_kind, "", "منظف فارغ بعد القص — عنوان عام");
+    }
+
+    #[test]
+    fn generic_title_matches_short_name() {
+        assert_eq!(enrich("com.github.johnfactotum.Foliate.desktop", "Foliate").media_kind, "",
+            "الاسم الصغير = foliate");
+        assert_eq!(enrich("mpv.desktop", "Mpv").media_kind, "", "مطابقة بحرف صغير");
+    }
+
+    #[test]
+    fn generic_title_false_for_real_titles() {
+        assert!(!is_generic_title("mpv.desktop", "الدرس 2 - mpv"));
+        assert!(!is_generic_title("mpv.desktop", "تائية أبو إسحاق الإلبيري"));
+    }
+
+    #[test]
+    fn doc_ext_not_blocked_by_guard() {
+        let e = enrich("com.github.johnfactotum.Foliate.desktop", "كتاب.pdf");
+        assert_eq!(e.media_kind, "reading", "الامتداد غير مشروط بالحارس");
     }
 }
