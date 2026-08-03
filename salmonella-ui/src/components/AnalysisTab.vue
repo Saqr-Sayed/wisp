@@ -191,7 +191,7 @@ async function refreshContent() {
                     <b class="clickable" @click="emit('search', it.name)">{{ it.name }}</b>
                     <button class="icon-btn" :aria-label="t('analysis.edit.rename')" @click="startRenameSeries(it.name)">✎</button>
                   </template>
-                  <span class="s-eps">{{ t('analysis.episodesCount', { n: it.episodes.length }) }}</span>
+                  <span class="s-eps">{{ t(it.episodes.length === 1 ? 'analysis.episodesCount.one' : 'analysis.episodesCount.other', { n: it.episodes.length }) }}</span>
                   <span class="s-dur">{{ formatDuration(it.secs) }}</span>
                 </div>
                 <div v-if="!collapsed.has(it.name)" class="tree-child">
@@ -246,8 +246,9 @@ async function refreshContent() {
 .srow b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s-eps { color: var(--accent); font-weight: 700; font-size: 0.8rem; }
 .s-dur { color: var(--ink-muted); font-size: 0.8rem; }
-.content { display: flex; flex-direction: column; gap: 0.9rem; }
+.content { display: flex; flex-direction: column; gap: 1rem; }
 .c-sec { display: flex; flex-direction: column; gap: 0.25rem; }
+.c-sec:not(:last-child) { border-bottom: 1px solid var(--border); padding-bottom: 0.7rem; }
 .sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0 0.2rem; }
 .sec-head b { font-size: 0.95rem; }
 .sec-total { color: var(--ink-muted); font-size: 0.75rem; }
