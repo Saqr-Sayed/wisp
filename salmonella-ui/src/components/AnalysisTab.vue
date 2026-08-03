@@ -174,14 +174,13 @@ async function refreshContent() {
         <section v-for="b in SECTIONS" :key="b" class="c-sec">
           <div class="sec-head">
             <b>{{ t(`analysis.section.${b}`) }}</b>
-          </div>
-          <div class="sec-total">
-            {{ formatDuration(sectionTotals[b]) }} · {{ t('analysis.section.items', { n: sectionCounts[b] }) }}
+            <span class="sec-total">{{ formatDuration(sectionTotals[b]) }} · {{ t('analysis.section.items', { n: sectionCounts[b] }) }}</span>
           </div>
           <template v-if="sections[b].length">
             <div v-for="it in sections[b]" :key="it.name" class="c-item">
               <template v-if="it.episodes">
                 <div class="srow" :aria-expanded="!collapsed.has(it.name)">
+                  <span class="dash">-</span>
                   <button class="chevron" :class="{ open: !collapsed.has(it.name) }"
                     aria-label="toggle" @click="toggleCollapse(it.name)">▸</button>
                   <template v-if="editingSeriesName === it.name">
@@ -203,6 +202,7 @@ async function refreshContent() {
                 </div>
               </template>
               <div v-else class="srow" @click="emit('search', it.name)">
+                <span class="dash">-</span>
                 <b class="clickable">{{ it.name }}</b>
                 <span class="s-dur">{{ formatDuration(it.secs) }}</span>
               </div>
@@ -248,10 +248,10 @@ async function refreshContent() {
 .s-dur { color: var(--ink-muted); font-size: 0.8rem; }
 .content { display: flex; flex-direction: column; gap: 0.9rem; }
 .c-sec { display: flex; flex-direction: column; gap: 0.25rem; }
-.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0 0.2rem; border-bottom: 1px solid var(--border); }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0 0.2rem; }
 .sec-head b { font-size: 0.95rem; }
-.sec-total { color: var(--ink-muted); font-size: 0.8rem; padding-bottom: 0.2rem; }
-.c-item { border-bottom: 1px solid var(--border); }
+.sec-total { color: var(--ink-muted); font-size: 0.75rem; }
+.dash { color: var(--ink-muted); font-weight: 700; width: 0.9rem; text-align: center; flex-shrink: 0; }
 .srow .clickable { cursor: pointer; }
 .srow .icon-btn { background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 0.15rem 0.3rem; font-size: 0.8rem; }
 .srow .icon-btn:hover { color: var(--accent); }
