@@ -27,9 +27,6 @@ function tabLabel(id: (typeof TABS)[number]): string {
 const report = ref<[string, number][]>([])
 const content = ref<[string, string, string, number][]>([])   // bucket, series, name, seconds
 const collapsed = ref<Set<string>>(new Set())                 // أسماء السلاسل المطوية
-const sortMode = ref<Record<string, 'time' | 'name'>>({
-  reading: 'time', watching: 'time', listening: 'time',
-})
 
 watch(() => [props.range, props.logs, props.groupBy] as const, async () => {
   const [from, to] = props.range
@@ -94,8 +91,7 @@ const sections = computed<Record<Bucket, ItemNode[]>>(() => {
     }
   }
   for (const b of SECTIONS) {
-    const mode = sortMode.value[b]
-    acc[b].sort((a, z) => mode === 'time' ? z.secs - a.secs : a.name.localeCompare(z.name, 'ar'))
+    acc[b].sort((a, z) => z.secs - a.secs)
     for (const n of acc[b]) {
       if (n.episodes) {
         // ترتيب الحلقات رقمي دائماً — لا يتأثر بمبدّل الفرز
@@ -196,13 +192,6 @@ async function refreshContent() {
         <section v-for="b in SECTIONS" :key="b" class="c-sec">
           <div class="sec-head">
             <b>{{ t(`analysis.section.${b}`) }}</b>
-            <div class="sort-toggle" role="group" :aria-label="t('analysis.sort.time')">
-              <button v-for="m in (['time', 'name'] as const)" :key="m"
-                class="pill mini" :class="{ on: sortMode[b] === m }"
-                @click="sortMode[b] = m">
-                {{ t(`analysis.sort.${m}`) }}
-              </button>
-            </div>
           </div>
           <div class="sec-total">
             {{ formatDuration(sectionTotals[b]) }} · {{ t('analysis.section.items', { n: sectionCounts[b] }) }}
@@ -287,7 +276,7 @@ async function refreshContent() {
 .bar-wrap { flex: 1; background: var(--surface-soft); border-radius: 999px; height: 0.7rem; overflow: hidden; }
 .bar { height: 100%; border-radius: 999px; transition: width 400ms ease, background 150ms; }
 .bar-val { width: 9rem; color: var(--ink-muted); font-size: 0.8rem; text-align: left; }
-.srow { display: flex; gap: 0.7rem; align-items: center; padding: 0.45rem 0.2rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.srow { display: flex; gap: 0.7rem; align-items: center; padding: 0.45rem 0.2rem; font-size: 0.9rem; }
 .srow b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s-eps { color: var(--accent); font-weight: 700; font-size: 0.8rem; }
 .s-dur { color: var(--ink-muted); font-size: 0.8rem; }
@@ -295,9 +284,6 @@ async function refreshContent() {
 .c-sec { display: flex; flex-direction: column; gap: 0.25rem; }
 .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0 0.2rem; border-bottom: 1px solid var(--border); }
 .sec-head b { font-size: 0.95rem; }
-.sort-toggle { display: inline-flex; gap: 0.15rem; background: var(--surface-soft); border-radius: 999px; padding: 0.15rem; }
-.sort-toggle .pill { background: transparent; border: none; }
-.sort-toggle .pill.on { background: var(--accent); color: #fff; }
 .sec-total { color: var(--ink-muted); font-size: 0.8rem; padding-bottom: 0.2rem; }
 .c-item { border-bottom: 1px solid var(--border); }
 .srow .clickable { cursor: pointer; }
