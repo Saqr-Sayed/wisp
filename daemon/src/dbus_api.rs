@@ -118,6 +118,14 @@ impl ActivityTracker {
         self.db.remove_series_override(&pattern);
     }
 
+    async fn rename_series(&self, old: String, new: String) {
+        self.db.rename_series(&old, &new);
+    }
+
+    async fn clear_series(&self, title: String) {
+        self.db.clear_series(&title);
+    }
+
     async fn list_ignored(&self) -> Vec<(String, String)> {
         self.db.list_ignored()
     }
