@@ -101,8 +101,8 @@ pub fn probe(app_id: &str) -> Option<MediaMeta> {
     let names = list_mpris_names(&conn);
     // الاسم المشتق موجود → عُد بميتاداتاه كما هي (None لموقوف/فارغ) بلا سقوط
     // لمشغل آخر — يمنع إسناد ميتاداتا mpv إلى Showtime المتوقف (القرار 10).
-    if names.iter().any(|n| n.eq_ignore_ascii_case(&bus)) {
-        return meta_for(&conn, &bus);
+    if let Some(found) = names.iter().find(|n| n.eq_ignore_ascii_case(&bus)) {
+        return meta_for(&conn, found);
     }
     // سقوط: أي مشغل MPRIS آخر يطابق اللاحقة (يغطي اختلاف تسمية Showtime وغيره)
     for alt in names {
