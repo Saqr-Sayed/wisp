@@ -131,19 +131,6 @@ pub fn run_tracker_loop<F>(
 
         let (app, title) = backend.active_window();
 
-        // Don't track our own windows (the UI) — it would pollute the timeline
-        // and make "current activity" always show Salmonella. Close the ongoing
-        // entry so time spent in Salmonella stays an honest gap.
-        if app.to_lowercase().contains("salmonella") || title.eq_ignore_ascii_case("salmonella") {
-            if let Some(id) = current_log_id {
-                db.close_log(id, unix_now());
-                current_log_id = None;
-            }
-            prev_app.clear();
-            prev_title.clear();
-            continue;
-        }
-
         if (app != prev_app || title != prev_title) && !app.is_empty() {
             let now = unix_now();
 
@@ -293,6 +280,26 @@ mod tests {
         assert_eq!(rows.len(), 1, "التطبيق والموقع المستبعدان لا يُسجلان");
         assert_eq!(rows[0].app_name, "code.desktop");
         assert_eq!(rows[0].site, "", "الموقع المستبعد لا يظهر في صف الموقع الجديد");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn tracks_own_app_windows() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-self-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        let backend = FakeSource(vec![("salmonella-ui.desktop".into(), "Salmonella".into())], 0);
+        let sys = SysEvents::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            run_tracker_loop(db.clone(), backend, &sys, &|_, _| None, |_, _, _| { let _ = tx.send(()); });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(rows.len(), 1, "نافذة تطبيقنا تُسجل كأي تطبيق");
+        assert!(rows[0].app_name.contains("salmonella"), "التطبيق نفسه يُسجل");
         let _ = std::fs::remove_file(&path);
     }
 
