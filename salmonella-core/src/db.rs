@@ -177,6 +177,7 @@ impl Db {
             self.reclassify_all();
         }
         self.backfill_media_kind();
+        self.backfill_generic_media_kind();
         self.backfill_series();
     }
 
@@ -303,8 +304,10 @@ impl Db {
             .filter_map(|r| r.ok()).collect()
     }
 
-    /// صفوف المحتوى الخام: (bucket, series, name, seconds)
-    /// name = عنوان مُنظَّف عبر classifier::clean_title
+    /// صفوف المحتوى المجمَّعة — صف واحد لكل عنوان مميز: (bucket, series, name, seconds).
+    /// المفتاح (media_kind, cleaned_title) عبر كامل الفترة؛ السلسلة الغالبة =
+    /// صاحب أعلى مجموع مدد (تعادل → الأولى في ترتيب start_time)؛ ترتيب الخرج =
+    /// أول صف لكل مجموعة. الاستعلام بلا تغيير — التجميع في Rust بعد الجلب.
     pub fn get_content(&self, from: i64, to: i64) -> Vec<(String, String, String, i64)> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
@@ -312,15 +315,39 @@ impl Db {
              WHERE start_time>=?1 AND start_time<=?2
                AND duration IS NOT NULL AND media_kind != ''
              ORDER BY start_time").unwrap();
-        stmt.query_map(params![from, to], |r| {
+        let rows: Vec<(String, String, String, i64)> = stmt.query_map(params![from, to], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?, r.get::<_, i64>(4)?))
-        }).unwrap()
-        .filter_map(|r| r.ok())
+        }).unwrap().filter_map(|r| r.ok())
         .map(|(kind, series, app, title, dur)| {
             (kind, series, crate::classifier::clean_title(&app, &title), dur)
         })
-        .collect()
+        .collect();
+
+        // ponytail: تجميع في Rust بلا تغيير الاستعلام (نفس نمط
+        // get_report/get_timeline)؛ ترتيب start_time المضمون من القاعدة يمنح
+        // فهرس الصف الأول معنى "أول ظهور" لتسوية التعادلات.
+        let mut order: Vec<(String, String)> = Vec::new();
+        let mut agg: std::collections::HashMap<(String, String),
+            std::collections::HashMap<String, (i64, usize)>> = std::collections::HashMap::new();
+        for (i, (kind, series, name, dur)) in rows.iter().enumerate() {
+            let key = (kind.clone(), name.clone());
+            let by_series = agg.entry(key.clone()).or_insert_with(|| {
+                order.push(key.clone());
+                std::collections::HashMap::new()
+            });
+            let e = by_series.entry(series.clone()).or_insert((0, i));
+            e.0 += dur;
+        }
+        order.into_iter().map(|(kind, name)| {
+            let by_series = &agg[&(kind.clone(), name.clone())];
+            let mut total = 0;
+            let mut list: Vec<(String, i64, usize)> = by_series.iter()
+                .map(|(s, (sum, pos))| { total += sum; (s.clone(), *sum, *pos) }).collect();
+            list.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(&b.2)));
+            let dominant = list.first().map(|(s, _, _)| s.clone()).unwrap_or_default();
+            (kind, dominant, name, total)
+        }).collect()
     }
 
     pub fn get_limits(&self) -> Vec<(String, String, i64)> {
@@ -869,6 +896,30 @@ impl Db {
         tx.commit().ok();
     }
 
+    /// تنظيف صفوف العناوين العامة القديمة: إعادة اشتقاق enrich لصفوف
+    /// media_kind != '' — إن عادت '' (عنوان عام محجوب بالحارس الجديد) تُمسح.
+    /// تمريرة خاملة بمعاملة واحدة (بنمط backfill_media_kind)؛ تُستدعى في
+    /// migrate بين backfill_media_kind وbackfill_series (القرار 17).
+    fn backfill_generic_media_kind(&self) {
+        let rows: Vec<(i64, String, String)> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt = conn.prepare("SELECT id, app_name, window_title FROM activity_logs
+                WHERE media_kind != '' AND event_type IN ('app','media')").unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        let mapped: Vec<i64> = rows.iter().filter_map(|(id, app, title)| {
+            if crate::classifier::enrich(app, title).media_kind.is_empty() { Some(*id) } else { None }
+        }).collect();
+        if mapped.is_empty() { return; }
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction().unwrap();
+        for id in mapped {
+            tx.execute("UPDATE activity_logs SET media_kind='' WHERE id=?1", params![id]).ok();
+        }
+        tx.commit().ok();
+    }
+
     /// اشتقاق series/episode لصفوف الوسائط القديمة الفارغة: تجاوز إن وُجد وإلا
     /// enrich (episode يُعاد اشتقاقه مع السلسلة — كلاهما فارغٌ تاريخياً).
     /// تمريرة خاملة بمعاملة واحدة (بنمط backfill_media_kind)؛ حارس series=''
@@ -1220,6 +1271,48 @@ mod tests {
         // صف نظامي media_kind=''
         db.insert_system_event("boot", "", 3000, Some(3000));
         assert!(db.get_content(0, 999_999).is_empty());
+    }
+
+    #[test]
+    fn get_content_merges_same_title_different_series() {
+        let db = tmp_db("content-merge");
+        let mk = |series: &str, dur: i64, t: i64| {
+            let id = db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+                friendly: "", site: "", site_friendly: "", series, episode: "",
+                app: "mpv.desktop", title: "الدرس 1 - mpv" }, t);
+            db.close_log(id, t + dur);
+        };
+        mk("الدرس", 30, 1000);
+        mk("تفسير آية الكرسي", 10, 2000);
+        mk("تفسير آية الكرسي", 7, 3000);
+        mk("", 2, 4000);
+        let content = db.get_content(0, 999_999);
+        assert_eq!(content.len(), 1, "عنوان واحد مكرر → صف واحد");
+        assert_eq!(content[0],
+            ("watching".to_string(), "الدرس".to_string(), "الدرس 1".to_string(), 49),
+            "المجموع مدموج والسلسلة الغالبة (30 > 17 > 2) تفوز");
+    }
+
+    #[test]
+    fn get_content_group_order_follows_first_row() {
+        let db = tmp_db("content-order");
+        let w = db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+            friendly: "", site: "", site_friendly: "", series: "الدرس", episode: "",
+            app: "mpv.desktop", title: "الدرس 1 - mpv" }, 1000);
+        db.close_log(w, 1030);
+        let l = db.insert_log(&LogEvent { event_type: "media", category: "استماع", media_kind: "listening",
+            friendly: "", site: "", site_friendly: "", series: "", episode: "",
+            app: "spotify.desktop", title: "أغنية - spotify" }, 2000);
+        db.close_log(l, 2010);
+        let w2 = db.insert_log(&LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+            friendly: "", site: "", site_friendly: "", series: "تفسير آية الكرسي", episode: "",
+            app: "mpv.desktop", title: "الدرس 1 - mpv" }, 3000);
+        db.close_log(w2, 3010);
+        let content = db.get_content(0, 999_999);
+        assert_eq!(content, vec![
+            ("watching".to_string(), "الدرس".to_string(), "الدرس 1".to_string(), 40),
+            ("listening".to_string(), String::new(), "أغنية".to_string(), 10),
+        ], "ترتيب المجموعات = أول صف لكل مجموعة (1000 قبل 2000 رغم الصف الثالث 3000)");
     }
 
     #[test]
@@ -1607,6 +1700,58 @@ mod tests {
         db.backfill_series();
         let twice = db.get_timeline(0, 999_999);
         assert_eq!(twice, rows, "التشغيل الثاني خامل — حارس series=''");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn backfill_generic_media_kind_clears_legacy() {
+        // قاعدة قديمة بعمود media_kind بقيم المصنف السابق (قبل حارس العناوين
+        // العامة) — Db::open يمسح صفوف العناوين العامة ويُبقي الحقيقية.
+        let path = std::env::temp_dir().join(format!("salmonella-{}-genbf.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let old = rusqlite::Connection::open(&path).unwrap();
+        old.execute_batch(
+            "CREATE TABLE activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL CHECK(event_type IN ('system','app','media')),
+                app_name TEXT NOT NULL DEFAULT '',
+                window_title TEXT NOT NULL DEFAULT '',
+                start_time INTEGER NOT NULL,
+                end_time INTEGER,
+                duration INTEGER,
+                series TEXT DEFAULT '',
+                episode TEXT DEFAULT '',
+                media_kind TEXT DEFAULT ''
+            );
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, media_kind)
+                VALUES('media','org.gnome.Showtime.desktop','Video Player',1000,1100,100,'watching');
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, media_kind)
+                VALUES('app','com.github.johnfactotum.Foliate.desktop','Foliate',2000,2100,100,'reading');
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, media_kind)
+                VALUES('app','org.gnome.Papers.desktop','رسالة في الطريق الي ثقافتنا.pdf',3000,3100,100,'reading');
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, media_kind)
+                VALUES('media','mpv.desktop','الدرس 2 - mpv',4000,4100,100,'watching');
+            INSERT INTO activity_logs(event_type, app_name, window_title, start_time, end_time, duration, media_kind)
+                VALUES('media','spotify.desktop','أغنية - spotify',5000,5100,100,'listening');"
+        ).unwrap();
+        drop(old);
+        let db = Db::open(&path);
+        let kinds = |p: &std::path::Path| -> Vec<(String, String)> {
+            rusqlite::Connection::open(p).unwrap().prepare(
+                "SELECT window_title, media_kind FROM activity_logs ORDER BY start_time")
+                .unwrap().query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+                .filter_map(|r| r.ok()).collect()
+        };
+        let rows = kinds(&path);
+        assert_eq!(rows, vec![
+            ("Video Player".to_string(), String::new()),
+            ("Foliate".to_string(), String::new()),
+            ("رسالة في الطريق الي ثقافتنا.pdf".to_string(), "reading".to_string()),
+            ("الدرس 2 - mpv".to_string(), "watching".to_string()),
+            ("أغنية - spotify".to_string(), "listening".to_string()),
+        ], "العناوين العامة تُمسح بعد Db::open والحقيقية تبقى");
+        db.backfill_generic_media_kind();
+        assert_eq!(kinds(&path), rows, "التشغيل الثاني خامل — الحارس media_kind != ''");
         let _ = std::fs::remove_file(&path);
     }
 }
