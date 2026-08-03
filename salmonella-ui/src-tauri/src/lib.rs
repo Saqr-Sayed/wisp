@@ -163,6 +163,22 @@ mod commands {
     }
 
     #[tauri::command]
+    pub async fn get_series_overrides() -> Result<Vec<(String, String)>, String> {
+        let reply = call("GetSeriesOverrides", &()).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn set_series_override(pattern: String, name: String) -> Result<(), String> {
+        call("SetSeriesOverride", &(pattern, name)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn remove_series_override(pattern: String) -> Result<(), String> {
+        call("RemoveSeriesOverride", &(pattern,)).await.map(|_| ())
+    }
+
+    #[tauri::command]
     pub async fn get_setting(key: String) -> Result<String, String> {
         let reply = call("GetSetting", &(key,)).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
@@ -357,6 +373,23 @@ mod commands {
     }
 
     #[tauri::command]
+    pub fn get_series_overrides(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String)>, String> {
+        Ok(db.get_series_overrides())
+    }
+
+    #[tauri::command]
+    pub fn set_series_override(db: State<'_, Arc<Db>>, pattern: String, name: String) -> Result<(), String> {
+        db.set_series_override(&pattern, &name);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn remove_series_override(db: State<'_, Arc<Db>>, pattern: String) -> Result<(), String> {
+        db.remove_series_override(&pattern);
+        Ok(())
+    }
+
+    #[tauri::command]
     pub fn get_setting(db: State<'_, Arc<Db>>, key: String) -> Result<String, String> {
         Ok(db.get_setting(&key).unwrap_or_default())
     }
@@ -432,10 +465,10 @@ mod commands {
 use commands::{
     add_category, add_category_member, delete_category, delete_category_member,
     get_categories, get_category_members, get_content, get_known_apps, get_known_sites, get_limits,
-    get_name_overrides, get_report, get_series, get_setting, get_site_overrides, get_status,
+    get_name_overrides, get_report, get_series, get_series_overrides, get_setting, get_site_overrides, get_status,
     get_timeline, ignore_target, list_ignored, notify, remove_limit, remove_name_override,
-    remove_site_override, rename_category, search, set_category_color, set_limit,
-    set_name_override, set_setting, set_site_override, unignore_target,
+    remove_series_override, remove_site_override, rename_category, search, set_category_color, set_limit,
+    set_name_override, set_series_override, set_setting, set_site_override, unignore_target,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -449,6 +482,7 @@ pub fn run() {
             get_name_overrides, set_name_override, remove_name_override,
             get_known_apps, get_known_sites,
             get_site_overrides, set_site_override, remove_site_override,
+            get_series_overrides, set_series_override, remove_series_override,
             get_setting, set_setting,
             get_categories, get_category_members, get_content, add_category, rename_category,
             set_category_color, add_category_member, delete_category_member, delete_category,
