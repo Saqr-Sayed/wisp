@@ -161,8 +161,10 @@ pub fn run_tracker_loop<F>(
             let site_friendly = db.site_friendly_name(&enriched.site);
             let category: String = db.resolve_category(&app, &enriched.site, enriched.category);
             let override_series = db.resolve_series(&app, &title);
+            // سياق المجلد لصفوف الوسائط فقط — صف المدير نفسه لا يستعير عنوانه
+            let folder = if crate::classifier::is_file_manager(&app) { None } else { last_folder.as_ref() };
             let series = final_series(&enriched.series, enriched.series_weak, override_series.as_deref(),
-                                      last_folder.as_ref(), now);
+                                      folder, now);
             let log_event = LogEvent {
                 event_type: enriched.event_type,
                 category: &category,
@@ -339,6 +341,7 @@ mod tests {
         assert_eq!(rows[0].series, "تفسير آية الكرسي", "سلسلة mpv الضعيفة ترث المجلد المُتصفَّح");
         assert_eq!(rows[0].episode, "2", "الحلقة تبقى من enrich");
         assert_eq!(rows[1].app_name, "org.gnome.Nautilus.desktop", "صف Nautilus يُسجَّل كالمعتاد");
+        assert_eq!(rows[1].series, "", "صف المدير نفسه لا يستعير عنوانه كسلسلة");
         let _ = std::fs::remove_file(&path);
     }
 
