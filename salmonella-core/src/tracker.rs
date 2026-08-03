@@ -52,6 +52,7 @@ pub fn run_tracker_loop<F>(
 {
     let mut prev_app = String::new();
     let mut prev_title = String::new();
+    let mut last_folder: Option<(String, i64)> = None;
     let mut current_log_id: Option<i64> = None;
     let mut sleep_open_id: Option<i64> = None;
 
@@ -135,6 +136,12 @@ pub fn run_tracker_loop<F>(
         if (app != prev_app || title != prev_title) && !app.is_empty() {
             let now = unix_now();
 
+            // سياق المجلد قبل فحص المستثنيات — تجاهل المستخدم لـ Nautilus لا يلغي
+            // وظيفة السياق، وصف Nautilus نفسه يُسجَّل كالمعتاد كتطبيق عادي
+            if crate::classifier::is_file_manager(&app) {
+                last_folder = Some((title.clone(), now));
+            }
+
             if let Some(id) = current_log_id {
                 db.close_log(id, now);
             }
@@ -153,6 +160,9 @@ pub fn run_tracker_loop<F>(
             let friendly = db.friendly_name(&app);
             let site_friendly = db.site_friendly_name(&enriched.site);
             let category: String = db.resolve_category(&app, &enriched.site, enriched.category);
+            let override_series = db.resolve_series(&app, &title);
+            let series = final_series(&enriched.series, enriched.series_weak, override_series.as_deref(),
+                                      last_folder.as_ref(), now);
             let log_event = LogEvent {
                 event_type: enriched.event_type,
                 category: &category,
@@ -160,7 +170,7 @@ pub fn run_tracker_loop<F>(
                 friendly: &friendly,
                 site: &enriched.site,
                 site_friendly: &site_friendly,
-                series: &enriched.series,
+                series: &series,
                 episode: &enriched.episode,
                 app: &app,
                 title: &title,
@@ -172,6 +182,17 @@ pub fn run_tracker_loop<F>(
             prev_title = title.clone();
         }
     }
+}
+
+/// حل السلسلة النهائية للصف الجديد — أولوية: تجاوز صريح ← سياق المجلد
+/// (ضعيفة فقط وضمن 600 ثانية) ← السلسلة المحلَّلة.
+fn final_series(enriched_series: &str, weak: bool, override_series: Option<&str>,
+                folder: Option<&(String, i64)>, now: i64) -> String {
+    if let Some(s) = override_series { return s.to_string(); }      // 1) تجاوز صريح
+    if weak {                                                       // 2) سياق المجلد
+        if let Some((name, ts)) = folder { if now - ts <= 600 { return name.clone(); } }
+    }
+    enriched_series.to_string()                                     // 3) المحلَّلة
 }
 
 #[cfg(test)]
@@ -290,6 +311,73 @@ mod tests {
         };
         let now = unix_now();
         assert!(sleep_end >= wake_t && sleep_end <= now, "يُغلق عند لحظة الاستيقاظ");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn folder_context_becomes_weak_series() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-ctx-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        let backend = FakeSource(vec![
+            ("org.gnome.Nautilus.desktop".into(), "تفسير آية الكرسي".into()),
+            ("mpv.desktop".into(), "الدرس 2 - mpv".into()),
+        ], 0);
+        let sys = SysEvents::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut n = 0;
+            run_tracker_loop(db.clone(), backend, &sys, |_, _, _| {
+                n += 1;
+                if n == 2 { tx.send(()).unwrap(); }
+            });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(rows[0].series, "تفسير آية الكرسي", "سلسلة mpv الضعيفة ترث المجلد المُتصفَّح");
+        assert_eq!(rows[0].episode, "2", "الحلقة تبقى من enrich");
+        assert_eq!(rows[1].app_name, "org.gnome.Nautilus.desktop", "صف Nautilus يُسجَّل كالمعتاد");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn final_series_expired_folder_keeps_enriched() {
+        let folder = Some(("تفسير آية الكرسي".to_string(), 1000));
+        assert_eq!(final_series("الدرس", true, None, folder.as_ref(), 1601), "الدرس",
+            "601 ثانية خارج نافذة الـ 600");
+        assert_eq!(final_series("الدرس", true, None, folder.as_ref(), 1600), "تفسير آية الكرسي",
+            "600 ثانية داخل النافذة");
+    }
+
+    #[test]
+    fn final_series_folder_never_overrides_strong() {
+        let folder = Some(("Videos".to_string(), 1000));
+        assert_eq!(final_series("SpongeBob", false, None, folder.as_ref(), 1100), "SpongeBob",
+            "سلسلة قوية لا يُجاوزها المجلد");
+    }
+
+    #[test]
+    fn explicit_override_beats_folder_and_enriched() {
+        let path = std::env::temp_dir().join(format!("salmonella-tracker-ovr-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = std::sync::Arc::new(Db::open(&path));
+        db.set_series_override("الدرس", "تفسير آية الكرسي");
+        let backend = FakeSource(vec![
+            ("mpv.desktop".into(), "الدرس 2 - mpv".into()),
+        ], 0);
+        let sys = SysEvents::new();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            run_tracker_loop(db.clone(), backend, &sys, |_, _, _| { let _ = tx.send(()); });
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let db = Db::open(&path);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(rows[0].series, "تفسير آية الكرسي", "التجاوز الصريح يغلب المحلَّلة");
+        assert_eq!(rows[0].episode, "2", "الحلقة تبقى من enrich — التجاوز لا يمسّها");
         let _ = std::fs::remove_file(&path);
     }
 }
