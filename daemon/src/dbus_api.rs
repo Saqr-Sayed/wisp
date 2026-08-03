@@ -138,6 +138,18 @@ impl ActivityTracker {
         self.db.unignore_target(&kind, &target);
     }
 
+    async fn archive_target(&self, kind: String, target: String) {
+        self.db.archive_target(&kind, &target);
+    }
+
+    async fn unarchive_target(&self, kind: String, target: String) {
+        self.db.unarchive_target(&kind, &target);
+    }
+
+    async fn list_archived(&self) -> Vec<(String, String)> {
+        self.db.list_archived()
+    }
+
     async fn get_setting(&self, key: String) -> zbus::fdo::Result<String> {
         Ok(self.db.get_setting(&key).unwrap_or_default())
     }
