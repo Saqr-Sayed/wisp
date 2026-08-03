@@ -1,4 +1,4 @@
-mod dbus_api; mod gnome; mod logind; mod systemd;
+mod dbus_api; mod gnome; mod logind; mod mpris; mod systemd;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};

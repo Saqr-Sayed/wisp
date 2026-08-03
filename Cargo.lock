@@ -3066,6 +3066,7 @@ name = "salmonella-daemon"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
+ "infer",
  "notify",
  "notify-debouncer-full",
  "salmonella-core",
@@ -3073,6 +3074,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "zbus 4.4.0",
+ "zvariant 4.2.0",
 ]
 
 [[package]]
