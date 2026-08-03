@@ -468,7 +468,7 @@ impl Db {
     /// إعادة تسمية سلسلة عبر كل الصفوف — نقل بيانات صرف بلا إنشاء تجاوز
     /// (السقف الموثّق: صفوف مستقبلية من سياق المجلد قد تعيد الاسم القديم).
     pub fn rename_series(&self, old: &str, new: &str) {
-        if old.is_empty() || new == old { return; }
+        if old.is_empty() || new.is_empty() || new == old { return; }
         self.conn.lock().unwrap().execute(
             "UPDATE activity_logs SET series=?2 WHERE series=?1",
             params![old, new],
@@ -1694,6 +1694,7 @@ mod tests {
         let series_of = |t: &str| rows.iter().find(|r| r.window_title == t).unwrap().series.clone();
         assert_eq!(series_of("تائية أبو إسحاق الإلبيري - mpv"), "المكتبة", "كل صفوف السلسلة تُعاد تسميتها");
         assert_eq!(series_of("الدرس 3 - mpv"), "علوم شرعية", "السلاسل الأخرى لا تُلمس");
+        assert!(db.get_series_overrides().is_empty(), "إعادة التسمية لا تُنشئ تجاوزاً");
     }
 
     #[test]
@@ -1702,6 +1703,7 @@ mod tests {
         db.rename_series("", "س");          // old فارغ — لا خطأ
         db.rename_series("مفقود", "س");     // old غير موجود — لا خطأ
         db.rename_series("س", "س");         // old == new — لا خطأ
+        db.rename_series("س", "");          // new فارغ — لا خطأ
     }
 
     #[test]

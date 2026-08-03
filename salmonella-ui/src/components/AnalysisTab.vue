@@ -219,35 +219,35 @@ async function refreshContent() {
                   </template>
                   <template v-else>
                     <b class="clickable" @click="emit('search', it.name)">{{ it.name }}</b>
-                    <button class="icon-btn small" :aria-label="t('analysis.edit.rename')" @click="startRenameSeries(it.name)">✎</button>
+                    <button class="icon-btn" :aria-label="t('analysis.edit.rename')" @click="startRenameSeries(it.name)">✎</button>
                   </template>
                   <span class="s-eps">{{ t('analysis.episodesCount', { n: it.episodes.length }) }}</span>
                   <span class="s-dur">{{ formatDuration(it.secs) }}</span>
                 </div>
                 <div v-if="!collapsed.has(it.name)" class="tree-child">
-                  <div v-for="ep in it.episodes" :key="ep.name" class="srow ep">
+                  <div v-for="ep in it.episodes" :key="ep.name" class="srow ep" @click="emit('search', ep.name)">
                     <template v-if="editingItem?.name === ep.name">
                       <input v-model="editItemValue" class="edit-input" :placeholder="t('analysis.edit.seriesPlaceholder')"
-                        @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" />
+                        @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" @click.stop />
                       <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
                     </template>
                     <template v-else>
-                      <span class="ep-name" @click="emit('search', ep.name)">{{ ep.name }}</span>
-                      <button class="icon-btn small" :aria-label="t('analysis.edit.rename')" @click="startEditItem(ep.name, it.name)">✎</button>
+                      <span class="ep-name">{{ ep.name }}</span>
+                      <button class="icon-btn" :aria-label="t('analysis.edit.rename')" @click.stop="startEditItem(ep.name, it.name)">✎</button>
                       <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
                     </template>
                   </div>
                 </div>
               </template>
-              <div v-else class="srow">
+              <div v-else class="srow" @click="emit('search', it.name)">
                 <template v-if="editingItem?.name === it.name">
                   <input v-model="editItemValue" class="edit-input" :placeholder="t('analysis.edit.seriesPlaceholder')"
-                    @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" />
+                    @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" @click.stop />
                   <span class="s-dur">{{ formatDuration(it.secs) }}</span>
                 </template>
                 <template v-else>
-                  <b class="clickable" @click="emit('search', it.name)">{{ it.name }}</b>
-                  <button class="icon-btn small" :aria-label="t('analysis.edit.rename')" @click="startEditItem(it.name, '')">✎</button>
+                  <b class="clickable">{{ it.name }}</b>
+                  <button class="icon-btn" :aria-label="t('analysis.edit.rename')" @click.stop="startEditItem(it.name, '')">✎</button>
                   <span class="s-dur">{{ formatDuration(it.secs) }}</span>
                 </template>
               </div>
