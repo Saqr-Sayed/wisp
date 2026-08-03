@@ -465,6 +465,27 @@ impl Db {
         self.conn.lock().unwrap().execute("DELETE FROM series_overrides WHERE pattern=?1", params![pattern]).ok();
     }
 
+    /// إعادة تسمية سلسلة عبر كل الصفوف — نقل بيانات صرف بلا إنشاء تجاوز
+    /// (السقف الموثّق: صفوف مستقبلية من سياق المجلد قد تعيد الاسم القديم).
+    pub fn rename_series(&self, old: &str, new: &str) {
+        if old.is_empty() || new == old { return; }
+        self.conn.lock().unwrap().execute(
+            "UPDATE activity_logs SET series=?2 WHERE series=?1",
+            params![old, new],
+        ).ok();
+    }
+
+    /// مسح إسناد سلسلة لعنصر: حذف تجاوز النمط + إعادة الصفوف المطابقة
+    /// للعنوان إلى سلسلة فارغة.
+    pub fn clear_series(&self, title: &str) {
+        if title.is_empty() { return; }
+        self.remove_series_override(title);
+        self.conn.lock().unwrap().execute(
+            "UPDATE activity_logs SET series='' WHERE window_title LIKE '%'||?1||'%'",
+            params![title],
+        ).ok();
+    }
+
     /// أطول نمط يطابق العنوان (بأحرف صغيرة في Rust — تطابق لاتيني دقيق الحالة،
     /// سقف موثّق) يفوز؛ التعادل يُحسم بالأسبق rowid. المطابقة على العنوان فقط.
     pub fn resolve_series(&self, app: &str, title: &str) -> Option<String> {
@@ -1655,6 +1676,47 @@ mod tests {
         let rows = db.get_timeline(0, 9999);
         assert_eq!(rows[0].series, "تفسير آية الكرسي", "الصف الضعيف المخزَّن يتجاوز أيضاً (فجوة الحارس)");
         assert_eq!(rows[1].series, "تفسير آية الكرسي", "الصف الفارغ يتحدث فوراً");
+    }
+
+    #[test]
+    fn rename_series_updates_rows_only() {
+        let db = tmp_db("serrename");
+        let ev = |series: &'static str, title: &'static str| LogEvent { event_type: "media", category: "وسائط", media_kind: "watching",
+            friendly: "", site: "", site_friendly: "", series, episode: "",
+            app: "mpv.desktop", title };
+        let id1 = db.insert_log(&ev("كتب", "تائية أبو إسحاق الإلبيري - mpv"), 1000);
+        db.close_log(id1, 1100);
+        let id2 = db.insert_log(&ev("علوم شرعية", "الدرس 3 - mpv"), 2000);
+        db.close_log(id2, 2100);
+        db.rename_series("كتب", "المكتبة");
+        // ponytail: get_timeline يعيد الأحدث أولاً — نحدد الصفوف بالعنوان لا بالمؤشر
+        let rows = db.get_timeline(0, 9999);
+        let series_of = |t: &str| rows.iter().find(|r| r.window_title == t).unwrap().series.clone();
+        assert_eq!(series_of("تائية أبو إسحاق الإلبيري - mpv"), "المكتبة", "كل صفوف السلسلة تُعاد تسميتها");
+        assert_eq!(series_of("الدرس 3 - mpv"), "علوم شرعية", "السلاسل الأخرى لا تُلمس");
+    }
+
+    #[test]
+    fn rename_series_noop_edges() {
+        let db = tmp_db("serrename2");
+        db.rename_series("", "س");          // old فارغ — لا خطأ
+        db.rename_series("مفقود", "س");     // old غير موجود — لا خطأ
+        db.rename_series("س", "س");         // old == new — لا خطأ
+    }
+
+    #[test]
+    fn clear_series_removes_override_and_rows() {
+        let db = tmp_db("serclear");
+        let empty = LogEvent { event_type: "media", category: "وسائط", media_kind: "watching", friendly: "",
+            site: "", site_friendly: "", series: "", episode: "", app: "mpv.desktop", title: "تائية أبو إسحاق الإلبيري - mpv" };
+        let id = db.insert_log(&empty, 1000);
+        db.close_log(id, 1100);
+        db.set_series_override("تائية", "كتب");   // تجاوز + تطبيق رجعي على الصف القائم
+        assert_eq!(db.get_timeline(0, 9999)[0].series, "كتب", "قبل المسح: صف مُطبَّق عليه");
+        db.clear_series("تائية");
+        let rows = db.get_timeline(0, 9999);
+        assert_eq!(rows[0].series, "", "الصفوف تُعاد لسلسلة فارغة");
+        assert!(db.get_series_overrides().is_empty(), "التجاوز يُحذف");
     }
 
     #[test]
