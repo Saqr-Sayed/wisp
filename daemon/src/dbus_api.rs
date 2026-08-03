@@ -106,6 +106,18 @@ impl ActivityTracker {
         self.db.remove_site_override(&site);
     }
 
+    async fn get_series_overrides(&self) -> Vec<(String, String)> {
+        self.db.get_series_overrides()
+    }
+
+    async fn set_series_override(&self, pattern: String, name: String) {
+        self.db.set_series_override(&pattern, &name);
+    }
+
+    async fn remove_series_override(&self, pattern: String) {
+        self.db.remove_series_override(&pattern);
+    }
+
     async fn list_ignored(&self) -> Vec<(String, String)> {
         self.db.list_ignored()
     }
