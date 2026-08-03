@@ -138,6 +138,11 @@ impl Db {
             CREATE TABLE IF NOT EXISTS series_overrides (
                 pattern TEXT PRIMARY KEY,
                 name TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS archived (
+                kind TEXT NOT NULL,
+                target TEXT NOT NULL,
+                PRIMARY KEY (kind, target)
             );"
         ).expect("migrate tables");
 
@@ -545,6 +550,31 @@ impl Db {
             .filter_map(|r| r.ok()).collect()
     }
 
+    pub fn archive_target(&self, kind: &str, target: &str) {
+        let sql = if kind == "site" {
+            "INSERT OR IGNORE INTO archived(kind, target) VALUES('site', lower(?1))"
+        } else {
+            "INSERT OR IGNORE INTO archived(kind, target) VALUES('app', ?1)"
+        };
+        self.conn.lock().unwrap().execute(sql, params![target]).ok();
+    }
+
+    pub fn unarchive_target(&self, kind: &str, target: &str) {
+        let sql = if kind == "site" {
+            "DELETE FROM archived WHERE kind='site' AND lower(target)=lower(?1)"
+        } else {
+            "DELETE FROM archived WHERE kind='app' AND target=?1"
+        };
+        self.conn.lock().unwrap().execute(sql, params![target]).ok();
+    }
+
+    pub fn list_archived(&self) -> Vec<(String, String)> {
+        self.conn.lock().unwrap()
+            .prepare("SELECT kind, target FROM archived ORDER BY kind, target").unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
+            .filter_map(|r| r.ok()).collect()
+    }
+
     /// إعادة اشتقاق الموقع للصفوف القديمة بعد تحسين extractor —
     /// للمتصفحات فقط، الفئة لا تتغير، النتيجة خاملة عند التكرار.
     pub fn backfill_sites(&self) {
@@ -571,7 +601,9 @@ impl Db {
             let conn = self.conn.lock().unwrap();
             let mut stmt = conn.prepare(
                 "SELECT app_name FROM activity_logs
-                 WHERE app_name != '' GROUP BY app_name ORDER BY MAX(start_time) DESC"
+                 WHERE app_name != ''
+                   AND app_name NOT IN (SELECT target FROM archived WHERE kind='app')
+                 GROUP BY app_name ORDER BY MAX(start_time) DESC"
             ).unwrap();
             stmt.query_map([], |r| r.get::<_, String>(0)).unwrap()
                 .filter_map(|r| r.ok()).collect()
@@ -590,7 +622,9 @@ impl Db {
             let conn = self.conn.lock().unwrap();
             let mut stmt = conn.prepare(
                 "SELECT site FROM activity_logs
-                 WHERE site != '' GROUP BY lower(site) ORDER BY MAX(start_time) DESC"
+                 WHERE site != ''
+                   AND lower(site) NOT IN (SELECT lower(target) FROM archived WHERE kind='site')
+                 GROUP BY lower(site) ORDER BY MAX(start_time) DESC"
             ).unwrap();
             stmt.query_map([], |r| r.get::<_, String>(0)).unwrap()
                 .filter_map(|r| r.ok()).collect()
@@ -1596,6 +1630,57 @@ mod tests {
         }
         let known = db.get_known_sites();
         assert_eq!(known.len(), 2, "X و x يُدمجان، و X / Home تبقى");
+    }
+
+    #[test]
+    fn archive_hides_from_known_lists() {
+        let path = std::env::temp_dir().join(format!("salmonella-db-arch-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path);
+        for (app, title) in [("org.mozilla.firefox.desktop", "YouTube — Mozilla Firefox"), ("code.desktop", "main.rs")] {
+            let id = db.insert_log(&LogEvent { event_type: "app", category: "media", media_kind: "", friendly: app,
+                site: "", site_friendly: "", series: "", episode: "", app, title }, 1000 + (app.len() as i64));
+            db.close_log(id, 2000 + (app.len() as i64));
+        }
+        assert_eq!(db.get_known_apps().len(), 2);
+        db.archive_target("app", "code.desktop");
+        let known = db.get_known_apps();
+        assert_eq!(known.len(), 1, "المؤرشف يختفي من قائمة التطبيقات");
+        assert_eq!(known[0].0, "org.mozilla.firefox.desktop");
+        assert_eq!(db.list_archived(), vec![("app".to_string(), "code.desktop".to_string())]);
+        db.unarchive_target("app", "code.desktop");
+        assert_eq!(db.get_known_apps().len(), 2, "الاستعادة تظهره مجدداً");
+        assert!(db.list_archived().is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn archive_site_case_insensitive() {
+        let path = std::env::temp_dir().join(format!("salmonella-db-archs-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path);
+        let id = db.insert_log(&LogEvent { event_type: "app", category: "browsing", media_kind: "", friendly: "فايرفوكس",
+            site: "youtube", site_friendly: "youtube", series: "", episode: "",
+            app: "org.mozilla.firefox.desktop", title: "عنوان - YouTube — Mozilla Firefox" }, 1000);
+        db.close_log(id, 2000);
+        db.archive_target("site", "youtube");
+        assert!(db.get_known_sites().is_empty(), "أرشفة موقع بحروف مختلفة تختفي (حساسية الأحرف)");
+        db.unarchive_target("site", "YouTube");
+        assert_eq!(db.get_known_sites().len(), 1, "الاستعادة بحروف مختلفة تعيده");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn archived_app_still_tracked() {
+        let path = std::env::temp_dir().join(format!("salmonella-db-archt-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path);
+        db.archive_target("app", "code.desktop");
+        db.insert_log(&LogEvent { event_type: "app", category: "media", media_kind: "", friendly: "code",
+            site: "", site_friendly: "", series: "", episode: "", app: "code.desktop", title: "main.rs" }, 1000);
+        let rows = db.get_timeline(0, i64::MAX);
+        assert_eq!(rows.len(), 1, "الأرشفة لا توقف التسجيل");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test] fn backfill_reparses_browser_rows_and_is_idempotent() {
