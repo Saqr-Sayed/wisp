@@ -5,6 +5,7 @@ import {
   setNameOverride, removeNameOverride,
   getSetting, setSetting,
   getKnownApps, getKnownSites, setSiteOverride, removeSiteOverride,
+  getSeriesOverrides, setSeriesOverride, removeSeriesOverride,
   listIgnored, ignoreTarget, unignoreTarget,
   getCategories, getCategoryMembers, addCategory, renameCategory, setCategoryColor,
   addCategoryMember, deleteCategoryMember, deleteCategory, setCategoryCache,
@@ -23,7 +24,7 @@ const lang = ref<'auto' | 'ar' | 'en'>('auto')
 onMounted(async () => {
   const v = await getSetting('language').catch(() => 'auto')
   if (v === 'ar' || v === 'en' || v === 'auto') lang.value = v
-  await Promise.all([refreshKnown(), refreshIgnored(), refreshCategories()])
+  await Promise.all([refreshKnown(), refreshIgnored(), refreshCategories(), refreshSeries()])
 })
 async function setLang(v: 'auto' | 'ar' | 'en') {
   lang.value = v
@@ -164,6 +165,39 @@ async function saveEditSite() {
 }
 async function revertApp(a: KnownApp) { await removeNameOverride(a.id); await refreshKnown(); emit('changed') }
 async function revertSite(x: KnownSite) { await removeSiteOverride(x.site); await refreshKnown(); emit('changed') }
+
+// ── قواعد المسلسلات ─────────────────────────────────
+const seriesOverrides = ref<[string, string][]>([])
+const newPattern = ref('')
+const newName = ref('')
+const editingSeries = ref<string | null>(null)
+const editSeriesName = ref('')
+async function refreshSeries() {
+  seriesOverrides.value = await getSeriesOverrides()
+}
+function startEditSeries(pattern: string, name: string) { editingSeries.value = pattern; editSeriesName.value = name }
+async function saveEditSeries() {
+  if (!editingSeries.value || !editSeriesName.value.trim()) return
+  await setSeriesOverride(editingSeries.value, editSeriesName.value.trim())
+  editingSeries.value = null
+  await refreshSeries()
+  emit('changed')
+}
+async function revertSeries(pattern: string) {
+  await removeSeriesOverride(pattern)
+  await refreshSeries()
+  emit('changed')
+}
+async function addSeries() {
+  const p = newPattern.value.trim()
+  const n = newName.value.trim()
+  if (!p || !n) return
+  await setSeriesOverride(p, n)
+  newPattern.value = ''
+  newName.value = ''
+  await refreshSeries()
+  emit('changed')
+}
 
 async function removeTarget(kind: 'app' | 'site', target: string) {
   await ignoreTarget(kind, target)
@@ -378,6 +412,36 @@ async function setSiteLimit(x: KnownSite) {
             {{ knownSites.length ? t('settings.lists.noResults') : t('settings.lists.empty.sites') }}
           </div>
         </template>
+      </section>
+
+      <section class="card s-lists">
+        <h3>{{ t('settings.section.series') }}</h3>
+        <p class="hint">{{ t('settings.series.hint') }}</p>
+        <div class="add-form">
+          <input v-model="newPattern" class="edit-input" :placeholder="t('settings.series.patternPlaceholder')" />
+          <input v-model="newName" class="edit-input" :placeholder="t('settings.series.namePlaceholder')" />
+          <button class="btn primary small" @click="addSeries">{{ t('settings.series.add') }}</button>
+        </div>
+        <div v-for="[pattern, name] in seriesOverrides" :key="pattern" class="item-row">
+          <div class="item-main">
+            <code class="owid">{{ pattern }}</code>
+            <template v-if="editingSeries === pattern">
+              <input v-model="editSeriesName" class="edit-input" />
+              <button class="btn primary small" @click="saveEditSeries">✓</button>
+              <button class="btn ghost small" @click="editingSeries = null">✕</button>
+            </template>
+            <template v-else>
+              <b>{{ name }}</b>
+            </template>
+          </div>
+          <div class="item-actions">
+            <template v-if="editingSeries !== pattern">
+              <button class="btn ghost small" @click="startEditSeries(pattern, name)">{{ t('settings.lists.rename') }}</button>
+              <button class="btn ghost small" @click="revertSeries(pattern)">{{ t('settings.lists.revert') }}</button>
+            </template>
+          </div>
+        </div>
+        <div v-if="seriesOverrides.length === 0" class="empty">{{ t('settings.series.empty') }}</div>
       </section>
     </div>
   </div>
