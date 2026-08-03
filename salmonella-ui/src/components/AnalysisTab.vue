@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { getReport, getContent, formatDuration, categoryLabel, categoryColor, type LogEntry } from '../lib/dbus'
+import { getReport, getContent, formatDuration, categoryLabel, categoryColor, type LogEntry, setSeriesOverride, renameSeries, clearSeries } from '../lib/dbus'
 import { t } from '../lib/i18n'
 
 const props = defineProps<{
@@ -127,6 +127,46 @@ function toggleCollapse(name: string) {
   else next.add(name)
   collapsed.value = next
 }
+
+const editingSeriesName = ref<string | null>(null)   // node name in rename mode
+const editSeriesValue = ref('')
+const editingItem = ref<{ name: string; currentSeries: string } | null>(null)
+const editItemValue = ref('')
+
+async function startRenameSeries(name: string) {
+  editingSeriesName.value = name
+  editSeriesValue.value = name
+}
+async function saveRenameSeries() {
+  const old = editingSeriesName.value
+  const v = editSeriesValue.value.trim()
+  editingSeriesName.value = null
+  if (!old || !v || v === old) return
+  await renameSeries(old, v)
+  await refreshContent()
+}
+function cancelRenameSeries() { editingSeriesName.value = null }
+
+function startEditItem(name: string, currentSeries: string) {
+  editingItem.value = { name, currentSeries }
+  editItemValue.value = currentSeries
+}
+async function saveEditItem() {
+  const item = editingItem.value
+  const v = editItemValue.value.trim()
+  editingItem.value = null
+  if (!item) return
+  if (v === item.currentSeries) return
+  if (v) await setSeriesOverride(item.name, v)
+  else await clearSeries(item.name)
+  await refreshContent()
+}
+function cancelEditItem() { editingItem.value = null }
+
+async function refreshContent() {
+  const [from, to] = props.range
+  content.value = await getContent(from, to)
+}
 </script>
 
 <template>
@@ -173,21 +213,43 @@ function toggleCollapse(name: string) {
                 <div class="srow" :aria-expanded="!collapsed.has(it.name)">
                   <button class="chevron" :class="{ open: !collapsed.has(it.name) }"
                     aria-label="toggle" @click="toggleCollapse(it.name)">▸</button>
-                  <b class="clickable" @click="emit('search', it.name)">{{ it.name }}</b>
+                  <template v-if="editingSeriesName === it.name">
+                    <input v-model="editSeriesValue" class="edit-input" :placeholder="t('analysis.edit.seriesPlaceholder')"
+                      @keyup.enter="saveRenameSeries" @keyup.esc="cancelRenameSeries" @blur="cancelRenameSeries" />
+                  </template>
+                  <template v-else>
+                    <b class="clickable" @click="emit('search', it.name)">{{ it.name }}</b>
+                    <button class="icon-btn small" :aria-label="t('analysis.edit.rename')" @click="startRenameSeries(it.name)">✎</button>
+                  </template>
                   <span class="s-eps">{{ t('analysis.episodesCount', { n: it.episodes.length }) }}</span>
                   <span class="s-dur">{{ formatDuration(it.secs) }}</span>
                 </div>
                 <div v-if="!collapsed.has(it.name)" class="tree-child">
-                  <div v-for="ep in it.episodes" :key="ep.name" class="srow ep"
-                    @click="emit('search', ep.name)">
-                    <span class="ep-name">{{ ep.name }}</span>
-                    <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
+                  <div v-for="ep in it.episodes" :key="ep.name" class="srow ep">
+                    <template v-if="editingItem?.name === ep.name">
+                      <input v-model="editItemValue" class="edit-input" :placeholder="t('analysis.edit.seriesPlaceholder')"
+                        @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" />
+                      <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
+                    </template>
+                    <template v-else>
+                      <span class="ep-name" @click="emit('search', ep.name)">{{ ep.name }}</span>
+                      <button class="icon-btn small" :aria-label="t('analysis.edit.rename')" @click="startEditItem(ep.name, it.name)">✎</button>
+                      <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
+                    </template>
                   </div>
                 </div>
               </template>
-              <div v-else class="srow" @click="emit('search', it.name)">
-                <b class="clickable">{{ it.name }}</b>
-                <span class="s-dur">{{ formatDuration(it.secs) }}</span>
+              <div v-else class="srow">
+                <template v-if="editingItem?.name === it.name">
+                  <input v-model="editItemValue" class="edit-input" :placeholder="t('analysis.edit.seriesPlaceholder')"
+                    @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" />
+                  <span class="s-dur">{{ formatDuration(it.secs) }}</span>
+                </template>
+                <template v-else>
+                  <b class="clickable" @click="emit('search', it.name)">{{ it.name }}</b>
+                  <button class="icon-btn small" :aria-label="t('analysis.edit.rename')" @click="startEditItem(it.name, '')">✎</button>
+                  <span class="s-dur">{{ formatDuration(it.secs) }}</span>
+                </template>
               </div>
             </div>
           </template>
@@ -239,6 +301,9 @@ function toggleCollapse(name: string) {
 .sec-total { color: var(--ink-muted); font-size: 0.8rem; padding-bottom: 0.2rem; }
 .c-item { border-bottom: 1px solid var(--border); }
 .srow .clickable { cursor: pointer; }
+.srow .icon-btn { background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 0.15rem 0.3rem; font-size: 0.8rem; }
+.srow .icon-btn:hover { color: var(--accent); }
+.edit-input { flex: 1; min-width: 0; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0.2rem 0.5rem; font-size: 0.85rem; }
 .chevron { background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 0.2rem; font-size: 0.8rem; transition: transform 150ms; }
 .chevron.open { transform: rotate(90deg); }
 .tree-child { padding-inline-start: 1.3rem; display: flex; flex-direction: column; }
