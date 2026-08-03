@@ -306,7 +306,30 @@ async function refreshContent() {
 .edit-input { flex: 1; min-width: 0; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 0.2rem 0.5rem; font-size: 0.85rem; }
 .chevron { background: none; border: none; color: var(--ink-muted); cursor: pointer; padding: 0.2rem; font-size: 0.8rem; transition: transform 150ms; }
 .chevron.open { transform: rotate(90deg); }
-.tree-child { padding-inline-start: 1.3rem; display: flex; flex-direction: column; }
-.srow.ep { cursor: pointer; }
+.tree-child { padding-inline-start: 1.8rem; display: flex; flex-direction: column; }
+.srow.ep { position: relative; cursor: pointer; }
+/* خط التوصيل العمودي — يمتد بطول الصف، ويتوقف عند منحنى آخر طفل */
+.srow.ep::before {
+  content: '';
+  position: absolute;
+  inset-inline-end: 0.6rem;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: var(--border);
+  border-radius: 1px;
+}
+.srow.ep:last-child::before { bottom: 50%; }
+/* الذراع الأفقي + الزاوية المستديرة عند منتصف الصف */
+.srow.ep::after {
+  content: '';
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  width: 0.6rem;
+  height: 0.5rem;
+  border-inline-start: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-end-start-radius: 8px;
+}
 .ep-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); font-size: 0.85rem; }
 </style>
