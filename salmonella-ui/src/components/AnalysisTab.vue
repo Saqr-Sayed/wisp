@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { getReport, getContent, formatDuration, categoryLabel, categoryColor, type LogEntry, setSeriesOverride, renameSeries, clearSeries } from '../lib/dbus'
+import { getReport, getContent, formatDuration, categoryLabel, categoryColor, type LogEntry, renameSeries } from '../lib/dbus'
 import { t } from '../lib/i18n'
 
 const props = defineProps<{
@@ -126,8 +126,6 @@ function toggleCollapse(name: string) {
 
 const editingSeriesName = ref<string | null>(null)   // node name in rename mode
 const editSeriesValue = ref('')
-const editingItem = ref<{ name: string; currentSeries: string } | null>(null)
-const editItemValue = ref('')
 
 async function startRenameSeries(name: string) {
   editingSeriesName.value = name
@@ -142,22 +140,6 @@ async function saveRenameSeries() {
   await refreshContent()
 }
 function cancelRenameSeries() { editingSeriesName.value = null }
-
-function startEditItem(name: string, currentSeries: string) {
-  editingItem.value = { name, currentSeries }
-  editItemValue.value = currentSeries
-}
-async function saveEditItem() {
-  const item = editingItem.value
-  const v = editItemValue.value.trim()
-  editingItem.value = null
-  if (!item) return
-  if (v === item.currentSeries) return
-  if (v) await setSeriesOverride(item.name, v)
-  else await clearSeries(item.name)
-  await refreshContent()
-}
-function cancelEditItem() { editingItem.value = null }
 
 async function refreshContent() {
   const [from, to] = props.range
@@ -215,30 +197,14 @@ async function refreshContent() {
                 </div>
                 <div v-if="!collapsed.has(it.name)" class="tree-child">
                   <div v-for="ep in it.episodes" :key="ep.name" class="srow ep" @click="emit('search', ep.name)">
-                    <template v-if="editingItem?.name === ep.name">
-                      <input v-model="editItemValue" class="edit-input" :placeholder="t('analysis.edit.seriesPlaceholder')"
-                        @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" @click.stop />
-                      <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
-                    </template>
-                    <template v-else>
-                      <span class="ep-name">{{ ep.name }}</span>
-                      <button class="icon-btn" :aria-label="t('analysis.edit.rename')" @click.stop="startEditItem(ep.name, it.name)">✎</button>
-                      <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
-                    </template>
+                    <span class="ep-name">{{ ep.name }}</span>
+                    <span class="s-dur">{{ formatDuration(ep.secs) }}</span>
                   </div>
                 </div>
               </template>
               <div v-else class="srow" @click="emit('search', it.name)">
-                <template v-if="editingItem?.name === it.name">
-                  <input v-model="editItemValue" class="edit-input" :placeholder="t('analysis.edit.seriesPlaceholder')"
-                    @keyup.enter="saveEditItem" @keyup.esc="cancelEditItem" @blur="cancelEditItem" @click.stop />
-                  <span class="s-dur">{{ formatDuration(it.secs) }}</span>
-                </template>
-                <template v-else>
-                  <b class="clickable">{{ it.name }}</b>
-                  <button class="icon-btn" :aria-label="t('analysis.edit.rename')" @click.stop="startEditItem(it.name, '')">✎</button>
-                  <span class="s-dur">{{ formatDuration(it.secs) }}</span>
-                </template>
+                <b class="clickable">{{ it.name }}</b>
+                <span class="s-dur">{{ formatDuration(it.secs) }}</span>
               </div>
             </div>
           </template>
