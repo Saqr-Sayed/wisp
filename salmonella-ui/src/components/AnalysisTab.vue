@@ -312,7 +312,7 @@ async function refreshContent() {
 .srow.ep::before {
   content: '';
   position: absolute;
-  inset-inline-end: 0.6rem;
+  inset-inline-start: -0.6rem;
   top: 0; bottom: 0;
   width: 2px;
   background: var(--border);
@@ -323,7 +323,7 @@ async function refreshContent() {
 .srow.ep::after {
   content: '';
   position: absolute;
-  inset-inline-end: 0;
+  inset-inline-start: -0.6rem;
   top: 50%;
   width: 0.6rem;
   height: 0.5rem;
