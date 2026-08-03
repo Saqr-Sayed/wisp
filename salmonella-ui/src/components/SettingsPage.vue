@@ -5,8 +5,8 @@ import {
   setNameOverride, removeNameOverride,
   getSetting, setSetting,
   getKnownApps, getKnownSites, setSiteOverride, removeSiteOverride,
-  getSeriesOverrides, setSeriesOverride, removeSeriesOverride,
   listIgnored, ignoreTarget, unignoreTarget,
+  archiveTarget, unarchiveTarget, getArchived,
   getCategories, getCategoryMembers, addCategory, renameCategory, setCategoryColor,
   addCategoryMember, deleteCategoryMember, deleteCategory, setCategoryCache,
   type LogEntry, type KnownApp, type KnownSite, type CategoryInfo,
@@ -24,7 +24,7 @@ const lang = ref<'auto' | 'ar' | 'en'>('auto')
 onMounted(async () => {
   const v = await getSetting('language').catch(() => 'auto')
   if (v === 'ar' || v === 'en' || v === 'auto') lang.value = v
-  await Promise.all([refreshKnown(), refreshIgnored(), refreshCategories(), refreshSeries()])
+  await Promise.all([refreshKnown(), refreshIgnored(), refreshCategories(), refreshArchived()])
 })
 async function setLang(v: 'auto' | 'ar' | 'en') {
   lang.value = v
@@ -166,43 +166,22 @@ async function saveEditSite() {
 async function revertApp(a: KnownApp) { await removeNameOverride(a.id); await refreshKnown(); emit('changed') }
 async function revertSite(x: KnownSite) { await removeSiteOverride(x.site); await refreshKnown(); emit('changed') }
 
-// ── قواعد المسلسلات ─────────────────────────────────
-const seriesOverrides = ref<[string, string][]>([])
-const newPattern = ref('')
-const newName = ref('')
-const editingSeries = ref<string | null>(null)
-const editSeriesName = ref('')
-async function refreshSeries() {
-  seriesOverrides.value = await getSeriesOverrides()
+const archived = ref<[string, string][]>([])
+const archivedOpen = ref(false)
+async function refreshArchived() {
+  archived.value = await getArchived()
 }
-function startEditSeries(pattern: string, name: string) { editingSeries.value = pattern; editSeriesName.value = name }
-async function saveEditSeries() {
-  if (!editingSeries.value || !editSeriesName.value.trim()) return
-  await setSeriesOverride(editingSeries.value, editSeriesName.value.trim())
-  editingSeries.value = null
-  await refreshSeries()
-  emit('changed')
+async function archiveTarget2(kind: 'app' | 'site', target: string) {
+  await archiveTarget(kind, target)
+  await Promise.all([refreshArchived(), refreshKnown()])
 }
-async function revertSeries(pattern: string) {
-  await removeSeriesOverride(pattern)
-  await refreshSeries()
-  emit('changed')
+async function restoreArchived(kind: 'app' | 'site', target: string) {
+  await unarchiveTarget(kind, target)
+  await Promise.all([refreshArchived(), refreshKnown()])
 }
-async function addSeries() {
-  const p = newPattern.value.trim()
-  const n = newName.value.trim()
-  if (!p || !n) return
-  await setSeriesOverride(p, n)
-  newPattern.value = ''
-  newName.value = ''
-  await refreshSeries()
-  emit('changed')
-}
-
-async function removeTarget(kind: 'app' | 'site', target: string) {
-  await ignoreTarget(kind, target)
-  await Promise.all([refreshIgnored(), refreshKnown()])
-}
+function toggleArchived() { archivedOpen.value = !archivedOpen.value }
+const archivedApps = computed(() => archived.value.filter(([k]) => k === 'app'))
+const archivedSites = computed(() => archived.value.filter(([k]) => k === 'site'))
 async function restoreTarget(kind: 'app' | 'site', target: string) {
   await unignoreTarget(kind, target)
   await Promise.all([refreshIgnored(), refreshKnown()])
@@ -355,7 +334,7 @@ async function setSiteLimit(x: KnownSite) {
                   </span>
                   <button class="btn ghost small" @click="clearLimit(a.id)">{{ t('settings.lists.clearLimit') }}</button>
                 </template>
-                <button class="btn ghost small danger" @click="removeTarget('app', a.id)">{{ t('settings.lists.remove') }}</button>
+                <button class="btn ghost small" @click="archiveTarget2('app', a.id)">{{ t('settings.lists.archive') }}</button>
               </template>
               <template v-else>
                 <button class="btn ghost small" @click="restoreTarget('app', a.id)">{{ t('settings.lists.restore') }}</button>
@@ -368,6 +347,24 @@ async function setSiteLimit(x: KnownSite) {
           </div>
           <div v-if="filteredApps.length === 0" class="empty">
             {{ knownApps.length ? t('settings.lists.noResults') : t('settings.lists.empty.apps') }}
+          </div>
+          <div class="archived-block">
+            <button class="archived-head" @click="toggleArchived">
+              <span class="chevron" :class="{ open: archivedOpen }">▸</span>
+              {{ t('settings.lists.archivedSection') }} ({{ archivedApps.length }})
+            </button>
+            <div v-if="archivedOpen" class="archived-list">
+              <div v-for="[kind, target] in archivedApps" :key="target" class="item-row">
+                <div class="item-main">
+                  <code class="owid">{{ target }}</code>
+                  <b>{{ target }}</b>
+                </div>
+                <div class="item-actions">
+                  <button class="btn ghost small" @click="restoreArchived('app', target)">{{ t('settings.lists.restore') }}</button>
+                </div>
+              </div>
+              <div v-if="archivedApps.length === 0" class="empty">{{ t('settings.lists.emptyArchived') }}</div>
+            </div>
           </div>
         </template>
 
@@ -397,7 +394,7 @@ async function setSiteLimit(x: KnownSite) {
                   </span>
                   <button class="btn ghost small" @click="clearLimit(x.site)">{{ t('settings.lists.clearLimit') }}</button>
                 </template>
-                <button class="btn ghost small danger" @click="removeTarget('site', x.site)">{{ t('settings.lists.remove') }}</button>
+                <button class="btn ghost small" @click="archiveTarget2('site', x.site)">{{ t('settings.lists.archive') }}</button>
               </template>
               <template v-else>
                 <button class="btn ghost small" @click="restoreTarget('site', x.site)">{{ t('settings.lists.restore') }}</button>
@@ -411,38 +408,27 @@ async function setSiteLimit(x: KnownSite) {
           <div v-if="filteredSites.length === 0" class="empty">
             {{ knownSites.length ? t('settings.lists.noResults') : t('settings.lists.empty.sites') }}
           </div>
+          <div class="archived-block">
+            <button class="archived-head" @click="toggleArchived">
+              <span class="chevron" :class="{ open: archivedOpen }">▸</span>
+              {{ t('settings.lists.archivedSection') }} ({{ archivedSites.length }})
+            </button>
+            <div v-if="archivedOpen" class="archived-list">
+              <div v-for="[kind, target] in archivedSites" :key="target" class="item-row">
+                <div class="item-main">
+                  <code class="owid">{{ target }}</code>
+                  <b>{{ target }}</b>
+                </div>
+                <div class="item-actions">
+                  <button class="btn ghost small" @click="restoreArchived('site', target)">{{ t('settings.lists.restore') }}</button>
+                </div>
+              </div>
+              <div v-if="archivedSites.length === 0" class="empty">{{ t('settings.lists.emptyArchived') }}</div>
+            </div>
+          </div>
         </template>
       </section>
 
-      <section class="card s-lists">
-        <h3>{{ t('settings.section.series') }}</h3>
-        <p class="hint">{{ t('settings.series.hint') }}</p>
-        <div class="add-form">
-          <input v-model="newPattern" class="edit-input" :placeholder="t('settings.series.patternPlaceholder')" />
-          <input v-model="newName" class="edit-input" :placeholder="t('settings.series.namePlaceholder')" />
-          <button class="btn primary small" @click="addSeries">{{ t('settings.series.add') }}</button>
-        </div>
-        <div v-for="[pattern, name] in seriesOverrides" :key="pattern" class="item-row">
-          <div class="item-main">
-            <code class="owid">{{ pattern }}</code>
-            <template v-if="editingSeries === pattern">
-              <input v-model="editSeriesName" class="edit-input" />
-              <button class="btn primary small" @click="saveEditSeries">✓</button>
-              <button class="btn ghost small" @click="editingSeries = null">✕</button>
-            </template>
-            <template v-else>
-              <b>{{ name }}</b>
-            </template>
-          </div>
-          <div class="item-actions">
-            <template v-if="editingSeries !== pattern">
-              <button class="btn ghost small" @click="startEditSeries(pattern, name)">{{ t('settings.lists.rename') }}</button>
-              <button class="btn ghost small" @click="revertSeries(pattern)">{{ t('settings.lists.revert') }}</button>
-            </template>
-          </div>
-        </div>
-        <div v-if="seriesOverrides.length === 0" class="empty">{{ t('settings.series.empty') }}</div>
-      </section>
     </div>
   </div>
 </template>
@@ -523,4 +509,9 @@ async function setSiteLimit(x: KnownSite) {
 .pill.small { font-size: 0.7rem; padding: 0.15rem 0.55rem; }
 .arrow { color: var(--ink-muted); }
 .empty { color: var(--ink-muted); font-size: 0.85rem; padding: 0.6rem 0; }
+.archived-block { margin-top: 0.8rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.archived-head { display: flex; align-items: center; gap: 0.4rem; background: none; border: none; color: var(--ink-muted); font-size: 0.85rem; font-weight: 700; cursor: pointer; padding: 0.2rem; }
+.archived-head .chevron { transition: transform 150ms; font-size: 0.75rem; }
+.archived-head .chevron.open { transform: rotate(90deg); }
+.archived-list { display: flex; flex-direction: column; }
 </style>
