@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use salmonella_core::db::{Db, LogEntry};
+use wisp_core::db::{Db, LogEntry};
 use zbus::{interface, object_server::SignalContext, ConnectionBuilder};
 
 type Row = (i64, String, String, String, i64, i64, i64, String, String, String, String, String, String);
@@ -28,12 +28,12 @@ impl ActivityTracker {
 
     pub async fn emit_window_changed(&self, app_name: &str, window_title: &str, since: i64) -> zbus::Result<()> {
         let Some(conn) = self.conn.lock().unwrap().clone() else { return Ok(()) };
-        let ctxt = SignalContext::new(&conn, "/com/Saqr/Salomnella")?;
+        let ctxt = SignalContext::new(&conn, "/com/saqr/wisp")?;
         self.window_changed(&ctxt, app_name, window_title, since).await
     }
 }
 
-#[interface(name = "com.Saqr.Salomnella")]
+#[interface(name = "com.saqr.wisp")]
 impl ActivityTracker {
     async fn ping(&self) -> bool { true }
 
@@ -204,8 +204,8 @@ pub async fn serve(db: Arc<Db>) -> zbus::Result<(zbus::Connection, ActivityTrack
     let tracker = ActivityTracker::new(db);
     let emitter = tracker.clone();
     let conn = ConnectionBuilder::session()?
-        .name("com.Saqr.Salomnella")?
-        .serve_at("/com/Saqr/Salomnella", tracker)?
+        .name("com.saqr.wisp")?
+        .serve_at("/com/saqr/wisp", tracker)?
         .build()
         .await?;
     emitter.set_connection(conn.clone());

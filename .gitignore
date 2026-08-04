@@ -1,7 +1,7 @@
 target/
 node_modules/
 dist/
-salmonella-ui/src-tauri/gen/
+wisp-ui/src-tauri/gen/
 
 
 .superpowers/

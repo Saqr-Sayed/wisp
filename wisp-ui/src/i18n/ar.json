@@ -49,7 +49,7 @@
   "timeline.empty.events": "🌙 لا توجد أحداث في هذه الفترة",
   "settings.title": "الإعدادات",
   "settings.back": "رجوع",
-  "app.brand": "سالمونيلا",
+  "app.brand": "Wisp",
   "app.error.fetch": "تعذّر تحديث البيانات",
   "app.error.retry": "إعادة المحاولة",
   "app.banner.exceeded": "تجاوزت حد {target}: {minutes} دقيقة",

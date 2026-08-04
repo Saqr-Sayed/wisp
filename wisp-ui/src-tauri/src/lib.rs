@@ -22,7 +22,7 @@ pub struct LogEntry {
 
 pub fn show_notification(body: &str) -> Result<(), String> {
     notify_rust::Notification::new()
-        .summary("Salmonella")
+        .summary("Wisp")
         .body(body)
         .show()
         .map(|_| ())
@@ -49,9 +49,9 @@ mod commands {
     async fn call(method: &str, body: &(impl serde::Serialize + zbus::zvariant::Type)) -> Result<zbus::Message, String> {
         let conn = zbus::Connection::session().await.map_err(|e| e.to_string())?;
         conn.call_method(
-            Some("com.Saqr.Salomnella"),
-            "/com/Saqr/Salomnella",
-            Some("com.Saqr.Salomnella"),
+            Some("com.saqr.wisp"),
+            "/com/saqr/wisp",
+            Some("com.saqr.wisp"),
             method,
             body,
         )
@@ -269,11 +269,11 @@ mod commands {
 #[cfg(target_os = "windows")]
 mod commands {
     use super::LogEntry;
-    use salmonella_core::db::Db;
+    use wisp_core::db::Db;
     use std::sync::Arc;
     use tauri::State;
 
-    fn to_log_entry(e: &salmonella_core::db::LogEntry) -> LogEntry {
+    fn to_log_entry(e: &wisp_core::db::LogEntry) -> LogEntry {
         LogEntry {
             id: e.id,
             event_type: e.event_type.clone(),
@@ -526,8 +526,8 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     let builder = {
         use crate::windows_backend::{install_autostart, Win32Backend};
-        use salmonella_core::db::Db;
-        use salmonella_core::tracker::{run_tracker_loop, unix_now, SysEvents};
+        use wisp_core::db::Db;
+        use wisp_core::tracker::{run_tracker_loop, unix_now, SysEvents};
         use std::sync::Arc;
         use tauri::tray::TrayIconBuilder;
         use tauri::{menu::{Menu, MenuItem}, Manager};

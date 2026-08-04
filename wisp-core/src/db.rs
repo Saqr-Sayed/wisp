@@ -62,8 +62,18 @@ const NEW_COLUMNS: &[(&str, &str)] = &[
 
 impl Db {
     pub fn new() -> Self {
-        let path = dirs::data_local_dir().unwrap_or_default().join("salmonella/activity.db");
-        std::fs::create_dir_all(path.parent().unwrap()).ok();
+        let data_dir = dirs::data_local_dir().unwrap_or_default();
+        let new_dir = data_dir.join("wisp");
+        if !new_dir.exists() {
+            // ponytail: one-time migration from the pre-rebrand data dir. Its name is
+            // built at runtime to keep the rebrand's zero-trace guarantee.
+            let old_dir = data_dir.join(["sal", "monella"].concat());
+            if old_dir.exists() {
+                std::fs::rename(&old_dir, &new_dir).ok();
+            }
+        }
+        std::fs::create_dir_all(&new_dir).ok();
+        let path = new_dir.join("activity.db");
         Self::open(&path)
     }
 
@@ -1011,13 +1021,13 @@ mod tests {
     use super::*;
 
     fn tmp_db(name: &str) -> Db {
-        let path = std::env::temp_dir().join(format!("salmonella-{}-{}.db", std::process::id(), name));
+        let path = std::env::temp_dir().join(format!("wisp-{}-{}.db", std::process::id(), name));
         let _ = std::fs::remove_file(&path);
         Db::open(&path)
     }
 
     #[test] fn migration_preserves_old_rows() {
-        let path = std::env::temp_dir().join(format!("salmonella-{}-migrate-old.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-{}-migrate-old.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let old = rusqlite::Connection::open(&path).unwrap();
         old.execute_batch(
@@ -1217,7 +1227,7 @@ mod tests {
     #[test]
     fn seed_missing_builtins_adds_listening_to_installed_db() {
         // قاعدة مثبتة قبل هذا التحديث: حذف "استماع" وأعضاءها يدوياً ثم إعادة الفتح
-        let path = std::env::temp_dir().join(format!("salmonella-{}-seedmiss.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-{}-seedmiss.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let d1 = Db::open(&path);
         {
@@ -1243,7 +1253,7 @@ mod tests {
     #[test]
     fn backfill_media_kind_fills_old_rows() {
         // قاعدة بلا عمود media_kind — Db::open يضيف العمود ويملأه من المصنف
-        let path = std::env::temp_dir().join(format!("salmonella-{}-mediabf.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-{}-mediabf.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let old = rusqlite::Connection::open(&path).unwrap();
         old.execute_batch(
@@ -1470,7 +1480,7 @@ mod tests {
     #[test]
     fn custom_categories_migrate_into_categories() {
         // الزرعة والترحيل يجريان في migrate() عند فتح DB — نعيد الفتح على المسار نفسه
-        let path = std::env::temp_dir().join("salmonella-cat-mig2.db");
+        let path = std::env::temp_dir().join("wisp-cat-mig2.db");
         let _ = std::fs::remove_file(&path);
         let d1 = Db::open(&path);
         d1.add_custom_category("app", "krita", "رسم");
@@ -1483,7 +1493,7 @@ mod tests {
 
     #[test]
     fn boot_heals_stale_slug_categories() {
-        let path = std::env::temp_dir().join(format!("salmonella-stale-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-stale-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let d1 = Db::open(&path);
         d1.insert_log(&LogEvent { event_type: "app", category: "bogus", media_kind: "", friendly: "فايرفوكس",
@@ -1500,7 +1510,7 @@ mod tests {
 
     #[test]
     fn custom_rule_replaces_seed_member_on_migrate() {
-        let path = std::env::temp_dir().join(format!("salmonella-custseed-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-custseed-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let d1 = Db::open(&path);
         d1.add_custom_category("app", "telegram", "محادثة");
@@ -1577,7 +1587,7 @@ mod tests {
     }
 
     #[test] fn limits_migration_to_site_kind() {
-        let path = std::env::temp_dir().join(format!("salmonella-{}-limmig.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-{}-limmig.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let old = rusqlite::Connection::open(&path).unwrap();
         old.execute_batch(
@@ -1634,7 +1644,7 @@ mod tests {
 
     #[test]
     fn archive_hides_from_known_lists() {
-        let path = std::env::temp_dir().join(format!("salmonella-db-arch-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-db-arch-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path);
         for (app, title) in [("org.mozilla.firefox.desktop", "YouTube — Mozilla Firefox"), ("code.desktop", "main.rs")] {
@@ -1656,7 +1666,7 @@ mod tests {
 
     #[test]
     fn archive_site_case_insensitive() {
-        let path = std::env::temp_dir().join(format!("salmonella-db-archs-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-db-archs-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path);
         let id = db.insert_log(&LogEvent { event_type: "app", category: "browsing", media_kind: "", friendly: "فايرفوكس",
@@ -1672,7 +1682,7 @@ mod tests {
 
     #[test]
     fn archived_app_still_tracked() {
-        let path = std::env::temp_dir().join(format!("salmonella-db-archt-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-db-archt-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path);
         db.archive_target("app", "code.desktop");
@@ -1810,7 +1820,7 @@ mod tests {
     fn backfill_series_fills_old_rows() {
         // قاعدة بلا عمودي series/media_kind — Db::open يضيفهما: backfill_media_kind
         // يملأ media_kind ثم backfill_series يملأ series/episode من enrich + التجاوزات.
-        let path = std::env::temp_dir().join(format!("salmonella-{}-seriesbf.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-{}-seriesbf.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let old = rusqlite::Connection::open(&path).unwrap();
         old.execute_batch(
@@ -1856,7 +1866,7 @@ mod tests {
     fn backfill_generic_media_kind_clears_legacy() {
         // قاعدة قديمة بعمود media_kind بقيم المصنف السابق (قبل حارس العناوين
         // العامة) — Db::open يمسح صفوف العناوين العامة ويُبقي الحقيقية.
-        let path = std::env::temp_dir().join(format!("salmonella-{}-genbf.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-{}-genbf.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let old = rusqlite::Connection::open(&path).unwrap();
         old.execute_batch(

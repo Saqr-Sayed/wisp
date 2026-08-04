@@ -1,3 +1,5 @@
+// ponytail: localStorage key deliberately kept as 'salmonella-theme' (internal,
+// invisible to users; no migration on rebrand to Wisp). Do not rename.
 export type ThemeMode = 'system' | 'light' | 'dark'
 
 export function currentMode(): ThemeMode {

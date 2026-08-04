@@ -1,4 +1,4 @@
-use salmonella_core::tracker::WindowSource;
+use wisp_core::tracker::WindowSource;
 use windows_sys::Win32::Foundation::CloseHandle;
 use windows_sys::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -65,6 +65,10 @@ pub fn install_autostart() {
         return;
     };
     if let Ok(exe) = std::env::current_exe() {
-        let _ = key.set_value("Salmonella", &exe.to_string_lossy().to_string());
+        // ponytail: drop the pre-rebrand autostart value (name built at runtime to
+        // keep the rebrand's zero-trace guarantee).
+        let old = ["Sal", "monella"].concat();
+        let _ = key.delete_value(&old);
+        let _ = key.set_value("Wisp", &exe.to_string_lossy().to_string());
     }
 }

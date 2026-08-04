@@ -8,7 +8,7 @@ for (const s of ['getKnownApps', 'getKnownSites', 'getSiteOverrides', 'setSiteOv
 }
 
 // r2: db.rs يحتوي دوال السجل والمواقع
-const dbrc = fs.readFileSync('../salmonella-core/src/db.rs', 'utf8')
+const dbrc = fs.readFileSync('../wisp-core/src/db.rs', 'utf8')
 for (const s of ['site_overrides', 'get_known_apps', 'get_known_sites', 'site_friendly_name', 'set_site_override', 'remove_site_override', 'apply_app_rename', 'site_friendly']) {
   assert.ok(dbrc.includes(s), 'r2: db.rs ناقص: ' + s)
 }

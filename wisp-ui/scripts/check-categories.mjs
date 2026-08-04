@@ -8,7 +8,7 @@ for (const s of ['listCustomCategories', 'addCustomCategory', 'removeCustomCateg
 }
 
 // تحقق بنيوي: db.rs يحتوي دوال التصنيفات
-const dbrc = fs.readFileSync('../salmonella-core/src/db.rs', 'utf8')
+const dbrc = fs.readFileSync('../wisp-core/src/db.rs', 'utf8')
 for (const s of ['custom_categories', 'list_custom_categories', 'add_custom_category', 'remove_custom_category', 'match_custom_category']) {
   assert.ok(dbrc.includes(s), 'c2: db.rs ناقص: ' + s)
 }

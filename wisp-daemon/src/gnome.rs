@@ -1,11 +1,11 @@
-use salmonella_core::tracker::WindowSource;
+use wisp_core::tracker::WindowSource;
 use zbus::blocking::Connection;
 
-const DEST: &str = "com.Saqr.Salomnella.WindowSource";
-const PATH: &str = "/com/Saqr/Salomnella/WindowSource";
-const IFACE: &str = "com.Saqr.Salomnella.WindowSource";
+const DEST: &str = "com.saqr.wisp.WindowSource";
+const PATH: &str = "/com/saqr/wisp/WindowSource";
+const IFACE: &str = "com.saqr.wisp.WindowSource";
 
-/// Queries the Salmonella GNOME Shell extension for the active window.
+/// Queries the Wisp GNOME Shell extension for the active window.
 /// The extension runs inside gnome-shell (GNOME 50 closed org.gnome.Shell.Introspect
 /// behind an allowlist, so an extension is the only sanctioned way).
 pub struct GnomeBackend {
