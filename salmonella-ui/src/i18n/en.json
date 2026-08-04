@@ -88,6 +88,7 @@
   "settings.lists.revert": "Revert",
   "settings.lists.archive": "Archive",
   "settings.lists.restore": "Resume tracking",
+  "settings.lists.unarchive": "Restore",
   "settings.lists.archivedSection": "Archived",
   "settings.lists.emptyArchived": "No archived items",
   "settings.lists.addToCategory": "Categorize",

@@ -355,13 +355,13 @@ async function setSiteLimit(x: KnownSite) {
               {{ t('settings.lists.archivedSection') }} ({{ archivedApps.length }})
             </button>
             <div v-if="archivedOpen" class="archived-list">
-              <div v-for="target in archivedApps" :key="target" class="item-row">
+              <div v-for="[, target] in archivedApps" :key="target" class="item-row">
                 <div class="item-main">
                   <code class="owid">{{ target }}</code>
                   <b>{{ target }}</b>
                 </div>
                 <div class="item-actions">
-                  <button class="btn ghost small" @click="restoreArchived('app', target)">{{ t('settings.lists.restore') }}</button>
+                  <button class="btn ghost small" @click="restoreArchived('app', target)">{{ t('settings.lists.unarchive') }}</button>
                   <template v-if="limitOf('app', target) !== undefined">
                     <span class="lused">{{ t('settings.limits.used', { used: usedOf('app', target), max: limitOf('app', target) }) }}</span>
                     <button class="btn ghost small" @click="clearLimit(target)">{{ t('settings.lists.clearLimit') }}</button>
@@ -419,13 +419,13 @@ async function setSiteLimit(x: KnownSite) {
               {{ t('settings.lists.archivedSection') }} ({{ archivedSites.length }})
             </button>
             <div v-if="archivedOpen" class="archived-list">
-              <div v-for="target in archivedSites" :key="target" class="item-row">
+              <div v-for="[, target] in archivedSites" :key="target" class="item-row">
                 <div class="item-main">
                   <code class="owid">{{ target }}</code>
                   <b>{{ target }}</b>
                 </div>
                 <div class="item-actions">
-                  <button class="btn ghost small" @click="restoreArchived('site', target)">{{ t('settings.lists.restore') }}</button>
+                  <button class="btn ghost small" @click="restoreArchived('site', target)">{{ t('settings.lists.unarchive') }}</button>
                   <template v-if="limitOf('site', target) !== undefined">
                     <span class="lused">{{ t('settings.limits.used', { used: usedOf('site', target), max: limitOf('site', target) }) }}</span>
                     <button class="btn ghost small" @click="clearLimit(target)">{{ t('settings.lists.clearLimit') }}</button>

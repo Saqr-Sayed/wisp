@@ -88,6 +88,7 @@
   "settings.lists.revert": "استرجاع",
   "settings.lists.archive": "أرشفة",
   "settings.lists.restore": "استئناف التتبع",
+  "settings.lists.unarchive": "استرجاع",
   "settings.lists.archivedSection": "المؤرشفة",
   "settings.lists.emptyArchived": "لا عناصر مؤرشفة",
   "settings.lists.addToCategory": "تصنيف",
