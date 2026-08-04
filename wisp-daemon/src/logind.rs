@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use salmonella_core::tracker::{unix_now, SysEvents};
+use wisp_core::tracker::{unix_now, SysEvents};
 use zbus::blocking::Connection;
 
 const DEST: &str = "org.freedesktop.login1";

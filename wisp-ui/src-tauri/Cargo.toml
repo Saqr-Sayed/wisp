@@ -1,5 +1,5 @@
 [package]
-name = "salmonella-ui"
+name = "wisp-ui"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,7 +11,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-salmonella-core = { path = "../../salmonella-core" }
+wisp-core = { path = "../../wisp-core" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "4"

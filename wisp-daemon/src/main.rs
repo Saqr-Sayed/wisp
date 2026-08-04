@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use salmonella_core::db::Db;
-use salmonella_core::tracker::{run_tracker_loop, unix_now, SysEvents, WindowSource};
+use wisp_core::db::Db;
+use wisp_core::tracker::{run_tracker_loop, unix_now, SysEvents, WindowSource};
 use gnome::GnomeBackend;
 
 fn pick_backend() -> Option<impl WindowSource> {
@@ -18,7 +18,7 @@ fn pick_backend() -> Option<impl WindowSource> {
 }
 
 /// The daemon starts at login before gnome-shell finishes loading extensions,
-/// so retry until the Salmonella extension owns its bus name.
+/// so retry until the Wisp extension owns its bus name.
 fn wait_for_backend() -> impl WindowSource {
     loop {
         if let Some(b) = pick_backend() {
@@ -131,7 +131,7 @@ fn watch_files(db: Arc<Db>) {
 
 #[tokio::main]
 async fn main() {
-    println!("Salmonella daemon starting...");
+    println!("Wisp daemon starting...");
     systemd::install();
 
     let db = Arc::new(Db::new());
@@ -181,7 +181,7 @@ async fn main() {
             db.close_dangling(now);
             let kind = if shutdown.load(Ordering::Relaxed) { "power_off" } else { "logout" };
             db.insert_system_event(kind, "", now, Some(now));
-            println!("salmonella daemon exiting ({kind})");
+            println!("wisp daemon exiting ({kind})");
         }
         _ = std::future::pending::<()>() => {}
     }

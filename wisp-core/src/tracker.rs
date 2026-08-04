@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn inserts_enriched_data() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         let backend = FakeSource(vec![
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn skips_ignored_app_and_site() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-ign-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-ign-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         db.ignore_target("app", "org.gnome.Ptyxis.desktop");
@@ -285,10 +285,10 @@ mod tests {
 
     #[test]
     fn tracks_own_app_windows() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-self-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-self-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
-        let backend = FakeSource(vec![("salmonella-ui.desktop".into(), "Salmonella".into())], 0);
+        let backend = FakeSource(vec![("wisp-ui.desktop".into(), "Wisp".into())], 0);
         let sys = SysEvents::new();
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -299,13 +299,13 @@ mod tests {
         let db = Db::open(&path);
         let rows = db.get_timeline(0, i64::MAX);
         assert_eq!(rows.len(), 1, "نافذة تطبيقنا تُسجل كأي تطبيق");
-        assert!(rows[0].app_name.contains("salmonella"), "التطبيق نفسه يُسجل");
+        assert!(rows[0].app_name.contains("wisp"), "التطبيق نفسه يُسجل");
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
     fn sleep_event_splits_active_entry() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-sleep-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-sleep-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         let backend = FakeSource(vec![("a.desktop".into(), "t".into())], 0);
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn folder_context_becomes_weak_series() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-ctx-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-ctx-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         let backend = FakeSource(vec![
@@ -399,7 +399,7 @@ mod tests {
 
     #[test]
     fn explicit_override_beats_folder_and_enriched() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-ovr-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-ovr-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         db.set_series_override("الدرس", "تفسير آية الكرسي");
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn mpris_audio_overrides_watching() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-mpris-a-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-mpris-a-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         let backend = FakeSource(vec![
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn mpris_title_substituted_for_generic() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-mpris-t-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-mpris-t-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         let backend = FakeSource(vec![
@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     fn mpris_never_overrides_reading() {
-        let path = std::env::temp_dir().join(format!("salmonella-tracker-mpris-r-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-tracker-mpris-r-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let db = std::sync::Arc::new(Db::open(&path));
         let backend = FakeSource(vec![

@@ -1,5 +1,5 @@
-use salmonella_core::classifier;
-use salmonella_core::tracker::{MediaMeta, MediaMime};
+use wisp_core::classifier;
+use wisp_core::tracker::{MediaMeta, MediaMime};
 use zbus::blocking::{Connection, Proxy};
 
 /// اشتقاق اسم ناقل MPRIS من معرف التطبيق: قص .desktop ثم آخر مقطع بعد النقطة
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn sniff_mime_mp3_magic() {
-        let path = std::env::temp_dir().join(format!("salmonella-sniff-{}.bin", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wisp-sniff-{}.bin", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let mut f = std::fs::File::create(&path).unwrap();
         f.write_all(b"ID3\x03\x00\x00\x00\x00\x00\x00").unwrap();

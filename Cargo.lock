@@ -3052,48 +3052,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
-name = "salmonella-core"
-version = "0.1.0"
-dependencies = [
- "dirs 5.0.1",
- "regex",
- "rusqlite",
- "serde",
-]
-
-[[package]]
-name = "salmonella-daemon"
-version = "0.1.0"
-dependencies = [
- "dirs 5.0.1",
- "infer",
- "notify",
- "notify-debouncer-full",
- "salmonella-core",
- "serde",
- "serde_json",
- "tokio",
- "zbus 4.4.0",
- "zvariant 4.2.0",
-]
-
-[[package]]
-name = "salmonella-ui"
-version = "0.1.0"
-dependencies = [
- "notify-rust",
- "salmonella-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-shell",
- "windows-sys 0.59.0",
- "winreg 0.52.0",
- "zbus 4.4.0",
-]
-
-[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5219,6 +5177,48 @@ checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
 dependencies = [
  "cfg-if",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "wisp-core"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "regex",
+ "rusqlite",
+ "serde",
+]
+
+[[package]]
+name = "wisp-daemon"
+version = "0.1.0"
+dependencies = [
+ "dirs 5.0.1",
+ "infer",
+ "notify",
+ "notify-debouncer-full",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wisp-core",
+ "zbus 4.4.0",
+ "zvariant 4.2.0",
+]
+
+[[package]]
+name = "wisp-ui"
+version = "0.1.0"
+dependencies = [
+ "notify-rust",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-shell",
+ "windows-sys 0.59.0",
+ "winreg 0.52.0",
+ "wisp-core",
+ "zbus 4.4.0",
 ]
 
 [[package]]
