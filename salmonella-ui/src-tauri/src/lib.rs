@@ -248,6 +248,22 @@ mod commands {
     pub async fn unignore_target(kind: String, target: String) -> Result<(), String> {
         call("UnignoreTarget", &(kind, target)).await.map(|_| ())
     }
+
+    #[tauri::command]
+    pub async fn archive_target(kind: String, target: String) -> Result<(), String> {
+        call("ArchiveTarget", &(kind, target)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn unarchive_target(kind: String, target: String) -> Result<(), String> {
+        call("UnarchiveTarget", &(kind, target)).await.map(|_| ())
+    }
+
+    #[tauri::command]
+    pub async fn list_archived() -> Result<Vec<(String, String)>, String> {
+        let reply = call("ListArchived", &()).await?;
+        reply.body().deserialize().map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -460,15 +476,32 @@ mod commands {
         db.unignore_target(&kind, &target);
         Ok(())
     }
+
+    #[tauri::command]
+    pub fn archive_target(db: State<'_, Arc<Db>>, kind: String, target: String) -> Result<(), String> {
+        db.archive_target(&kind, &target);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn unarchive_target(db: State<'_, Arc<Db>>, kind: String, target: String) -> Result<(), String> {
+        db.unarchive_target(&kind, &target);
+        Ok(())
+    }
+
+    #[tauri::command]
+    pub fn list_archived(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String)>, String> {
+        Ok(db.list_archived())
+    }
 }
 
 use commands::{
-    add_category, add_category_member, delete_category, delete_category_member,
+    add_category, add_category_member, archive_target, delete_category, delete_category_member,
     get_categories, get_category_members, get_content, get_known_apps, get_known_sites, get_limits,
     get_name_overrides, get_report, get_series, get_series_overrides, get_setting, get_site_overrides, get_status,
-    get_timeline, ignore_target, list_ignored, notify, remove_limit, remove_name_override,
+    get_timeline, ignore_target, list_archived, list_ignored, notify, remove_limit, remove_name_override,
     remove_series_override, remove_site_override, rename_category, search, set_category_color, set_limit,
-    set_name_override, set_series_override, set_setting, set_site_override, unignore_target,
+    set_name_override, set_series_override, set_setting, set_site_override, unarchive_target, unignore_target,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -487,6 +520,7 @@ pub fn run() {
             get_categories, get_category_members, get_content, add_category, rename_category,
             set_category_color, add_category_member, delete_category_member, delete_category,
             list_ignored, ignore_target, unignore_target,
+            list_archived, archive_target, unarchive_target,
         ]);
 
     #[cfg(target_os = "windows")]
