@@ -12,7 +12,7 @@
       <stop offset="1" stop-color="#ffc7da"/>
     </linearGradient>
   </defs>
-  <g transform="translate(192 244.25) scale(32.653)">
+  <g transform="translate(100.6 136.5) scale(32.653)">
     <circle cx="10.5" cy="12" r="6.5" fill="none" stroke="url(#ring)" stroke-width="2.4"/>
     <g fill="none" stroke="url(#wisp)" stroke-linecap="round">
       <path d="M16.3 11.2 C18.2 9.5 19.6 7.7 22.2 5.5" stroke-width="1.7"/>
