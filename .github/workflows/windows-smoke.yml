@@ -1,0 +1,52 @@
+name: windows-smoke
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-and-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (MSVC)
+        run: rustup default stable-msvc
+
+      - name: Build wisp-ui.exe (release)
+        working-directory: wisp-ui
+        run: |
+          npm ci
+          npm run tauri build -- --no-bundle
+
+      - name: Smoke test — run app, drop a file, check DB
+        shell: bash
+        run: |
+          APP=wisp-ui/src-tauri/target/release/wisp-ui.exe
+          # Let the app register WTS + boot/login, then drop a watched file.
+          "$APP" &
+          sleep 12
+          echo "smoke-test-$$.txt" > "$USERPROFILE/Documents/wisp-smoke-$$.txt"
+          sleep 6
+          # Give the tracker a moment, then close the app (tray app: kill is fine).
+          kill %1 2>/dev/null || true
+          sleep 2
+          python - <<'EOF'
+          import os, sqlite3
+          db = os.path.join(os.environ['LOCALAPPDATA'], 'wisp', 'activity.db')
+          print('db:', db, 'exists:', os.path.exists(db))
+          assert os.path.exists(db), 'DB was never created — app died before setup'
+          con = sqlite3.connect(db)
+          rows = con.execute(
+              "select detail, window_title from activity_logs where event_type='system' order by id"
+          ).fetchall()
+          print('system rows:', rows)
+          kinds = [r[0] for r in rows]
+          assert 'boot' in kinds, f'no boot row: {rows}'
+          assert 'login' in kinds, f'no login row: {rows}'
+          assert any(k == 'file_created' for k in kinds), f'no file_created row: {rows}'
+          n_app = con.execute("select count(*) from activity_logs where event_type='app'").fetchone()[0]
+          print('app rows:', n_app)
+          print('SMOKE OK')
+          EOF
