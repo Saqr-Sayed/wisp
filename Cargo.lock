@@ -5181,7 +5181,7 @@ dependencies = [
 
 [[package]]
 name = "wisp-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "dirs 5.0.1",
  "notify",
@@ -5193,7 +5193,7 @@ dependencies = [
 
 [[package]]
 name = "wisp-daemon"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "dirs 5.0.1",
  "infer",
@@ -5207,7 +5207,7 @@ dependencies = [
 
 [[package]]
 name = "wisp-ui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "dirs 5.0.1",
  "glib",
