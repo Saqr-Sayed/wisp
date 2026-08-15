@@ -32,8 +32,8 @@ jobs:
           sleep 12
           echo "smoke-test-$$.txt" > "$USERPROFILE/Documents/wisp-smoke-$$.txt"
           sleep 6
-          # Give the tracker a moment, then close the app (tray app: kill is fine).
-          kill %1 2>/dev/null || true
+          # Give the tracker a moment, then close the app (tray app: taskkill).
+          taskkill //IM wisp-ui.exe //F 2>/dev/null || true
           sleep 2
           python - <<'EOF'
           import os, sqlite3
