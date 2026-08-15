@@ -2,6 +2,10 @@ use serde::Serialize;
 
 #[cfg(target_os = "windows")]
 mod windows_backend;
+#[cfg(target_os = "windows")]
+mod windows_media;
+#[cfg(target_os = "windows")]
+mod windows_session;
 
 #[derive(Serialize)]
 pub struct LogEntry {
@@ -504,6 +508,28 @@ use commands::{
     set_name_override, set_series_override, set_setting, set_site_override, unarchive_target, unignore_target,
 };
 
+#[cfg(target_os = "linux")]
+fn disable_pinch_zoom(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let Some(window) = app.get_webview_window("main") else { return };
+    let _ = window.with_webview(|platform_webview| {
+        let view = platform_webview.inner();
+        // WebKitGTK zooms on touchpad pinch via the zoom-level property, bypassing
+        // page JS; reset it the moment it changes. ponytail: FFI, tauri/wry have no flag.
+        use glib::prelude::*;
+        view.connect_notify_local(Some("zoom-level"), move |view, _| {
+            use glib::translate::ToGlibPtr;
+            unsafe {
+                let raw = view.to_glib_none().0;
+                let level = webkit2gtk_sys::webkit_web_view_get_zoom_level(raw);
+                if (level - 1.0).abs() > 1e-6 {
+                    webkit2gtk_sys::webkit_web_view_set_zoom_level(raw, 1.0);
+                }
+            }
+        });
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -523,15 +549,23 @@ pub fn run() {
             list_archived, archive_target, unarchive_target,
         ]);
 
+    #[cfg(target_os = "linux")]
+    let builder = builder.setup(|app| {
+        disable_pinch_zoom(app.handle());
+        Ok(())
+    });
+
     #[cfg(target_os = "windows")]
     let builder = {
         use crate::windows_backend::{install_autostart, Win32Backend};
+        use crate::windows_media::{media_hook, spawn_smtc_poller};
+        use crate::windows_session::{record_boot_login, spawn_session_listener};
         use wisp_core::db::Db;
         use wisp_core::tracker::{run_tracker_loop, unix_now, SysEvents};
+        use wisp_core::watcher::spawn_file_watcher;
         use std::sync::Arc;
         use tauri::tray::TrayIconBuilder;
         use tauri::{menu::{Menu, MenuItem}, Manager};
-
         builder
             .setup(|app| {
                 install_autostart();
@@ -539,10 +573,23 @@ pub fn run() {
                 let db = Arc::new(Db::new());
                 app.manage(db.clone());
                 db.close_dangling(unix_now());
+                record_boot_login(&db);
 
-                let sys = SysEvents::new();
+                let sys = Arc::new(SysEvents::new());
+                spawn_session_listener(sys.clone());
+                let media = spawn_smtc_poller();
+
+                let home = dirs::home_dir().unwrap_or_default();
+                let watched: Vec<_> =
+                    ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music"]
+                        .iter()
+                        .map(|d| home.join(d))
+                        .filter(|d| d.is_dir())
+                        .collect();
+                spawn_file_watcher(db.clone(), watched);
+
                 std::thread::spawn(move || {
-                    run_tracker_loop(db, Win32Backend, &sys, &|_, _| None, |_, _, _| {});
+                    run_tracker_loop(db, Win32Backend, &sys, &|app, title| media_hook(&media, app, title), |_, _, _| {});
                 });
 
                 let show = MenuItem::with_id(app, "show", "إظهار", true, None::<&str>)?;

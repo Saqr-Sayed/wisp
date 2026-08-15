@@ -1,12 +1,13 @@
 mod dbus_api; mod gnome; mod logind; mod mpris; mod systemd;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use wisp_core::db::Db;
 use wisp_core::tracker::{run_tracker_loop, unix_now, SysEvents, WindowSource};
+use wisp_core::watcher::spawn_file_watcher;
 use gnome::GnomeBackend;
 
 fn pick_backend() -> Option<impl WindowSource> {
@@ -40,93 +41,16 @@ fn boot_time() -> i64 {
     0
 }
 
-fn usable(p: &Path) -> bool {
-    if p.file_name().map(|f| f.to_string_lossy().starts_with('.')).unwrap_or(false) {
-        return false;
-    }
-    !p.components().any(|c| matches!(c.as_os_str().to_str(), Some(".git" | "node_modules" | "target")))
-}
-
-fn rel_path(home: &Path, p: &Path) -> String {
-    match p.strip_prefix(home) {
-        Ok(rel) => rel.display().to_string(),
-        Err(_) => p.display().to_string(),
-    }
-}
-
-/// Watch XDG user dirs for file create/delete/rename and log them as system
-/// events (debounced 3s, so save-bomb bursts collapse into "N files in dir").
+/// مراقبة مجلدات XDG للمستخدم (Desktop/Documents/Downloads/Pictures/Videos/Music)
+/// عبر المراقب المشترك في wisp-core (يستخدمه أيضاً مسار ويندوز داخل التطبيق).
 fn watch_files(db: Arc<Db>) {
-    use notify_debouncer_full::{
-        new_debouncer,
-        notify::event::ModifyKind,
-        notify::{EventKind, RecursiveMode},
-        DebounceEventResult,
-    };
-
     let home = dirs::home_dir().unwrap_or_default();
-    let dirs: Vec<_> = ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music"]
+    let dirs: Vec<PathBuf> = ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music"]
         .iter()
         .map(|d| home.join(d))
         .filter(|d| d.is_dir())
         .collect();
-    if dirs.is_empty() {
-        return;
-    }
-    let listed: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
-    println!("file watcher active on: {}", listed.join(", "));
-
-    std::thread::spawn(move || {
-        let (tx, rx) = std::sync::mpsc::channel::<DebounceEventResult>();
-        let mut debouncer = new_debouncer(Duration::from_secs(3), None, tx).expect("debouncer");
-        for d in &dirs {
-            if let Err(e) = debouncer.watch(d, RecursiveMode::Recursive) {
-                eprintln!("watch {:?}: {e}", d);
-            }
-        }
-        for batch in rx {
-            let events = match batch {
-                Ok(events) => events,
-                Err(e) => {
-                    eprintln!("file watcher: {e:?}");
-                    continue;
-                }
-            };
-            let mut by_kind: std::collections::HashMap<&'static str, Vec<String>> =
-                std::collections::HashMap::new();
-            for ev in events {
-                let kind = match ev.event.kind {
-                    EventKind::Create(_) => "file_created",
-                    EventKind::Remove(_) => "file_deleted",
-                    EventKind::Modify(ModifyKind::Name(_)) => "file_renamed",
-                    _ => continue,
-                };
-                if ev.event.paths.is_empty() {
-                    continue;
-                }
-                let paths: Vec<&PathBuf> = ev.event.paths.iter().filter(|p| usable(p)).collect();
-                if paths.is_empty() {
-                    continue;
-                }
-                by_kind.entry(kind).or_default().extend(paths.iter().map(|p| rel_path(&home, p)));
-            }
-            if by_kind.is_empty() {
-                continue;
-            }
-            let now = unix_now();
-            for (kind, paths) in by_kind {
-                let title = match paths.len() {
-                    1 => paths[0].clone(),
-                    2 if kind == "file_renamed" => format!("{} -> {}", paths[0], paths[1]),
-                    n => {
-                        let dir = paths[0].rsplit_once('/').map(|(d, _)| d).unwrap_or(&paths[0]);
-                        format!("{n} files in {dir}")
-                    }
-                };
-                db.insert_system_event(kind, &title, now, Some(now));
-            }
-        }
-    });
+    spawn_file_watcher(db, dirs);
 }
 
 #[tokio::main]

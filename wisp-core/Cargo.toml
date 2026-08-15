@@ -8,3 +8,9 @@ regex = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "5"
 serde = { version = "1", features = ["derive"] }
+# ponytail: notify 8 / debouncer-full 0.6 (not 7/mini) — only these are in the offline
+# cargo cache; same API surface (new_debouncer, DebouncedEvent.event), debouncer-full
+# additionally dedupes consecutive events per path. Shared file watcher used by
+# both the Linux daemon and the Windows in-process tracker.
+notify = "8"
+notify-debouncer-full = "0.6"

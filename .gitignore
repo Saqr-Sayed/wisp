@@ -3,5 +3,8 @@ node_modules/
 dist/
 wisp-ui/src-tauri/gen/
 
-
+# agent tooling — not project source
 .superpowers/
+.impeccable/
+.xwin-cache/
+docs/superpowers/

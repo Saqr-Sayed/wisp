@@ -23,9 +23,9 @@
   "analysis.section.watching": "مشاهدة",
   "analysis.section.listening": "استماع",
   "analysis.section.items": "{n} عنصر",
-  "analysis.period.day": "يوم",
-  "analysis.period.week": "أسبوع",
-  "analysis.period.month": "شهر",
+  "analysis.period.day": "يومي",
+  "analysis.period.week": "أسبوعي",
+  "analysis.period.month": "شهري",
   "analysis.episode": "حلقة",
   "analysis.episodePlural": "حلقة",
   "analysis.episodesCount.one": "{n} عنصر",
@@ -138,5 +138,9 @@
   "months.8": "سبتمبر",
   "months.9": "أكتوبر",
   "months.10": "نوفمبر",
-  "months.11": "ديسمبر"
+  "months.11": "ديسمبر",
+  "overview.last8Weeks": "آخر 8 أسابيع",
+  "overview.avgMonthLabel": "متوسط الشهر:",
+  "overview.thisMonth": "هذا الشهر",
+  "overview.thisYear": "هذه السنة"
 }

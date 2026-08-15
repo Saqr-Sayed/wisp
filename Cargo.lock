@@ -5184,6 +5184,8 @@ name = "wisp-core"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
+ "notify",
+ "notify-debouncer-full",
  "regex",
  "rusqlite",
  "serde",
@@ -5195,8 +5197,6 @@ version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
  "infer",
- "notify",
- "notify-debouncer-full",
  "serde",
  "serde_json",
  "tokio",
@@ -5209,12 +5209,17 @@ dependencies = [
 name = "wisp-ui"
 version = "0.1.0"
 dependencies = [
+ "dirs 5.0.1",
+ "glib",
  "notify-rust",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-shell",
+ "webkit2gtk",
+ "webkit2gtk-sys",
+ "windows",
  "windows-sys 0.59.0",
  "winreg 0.52.0",
  "wisp-core",

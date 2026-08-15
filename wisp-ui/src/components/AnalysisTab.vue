@@ -8,16 +8,13 @@ const props = defineProps<{
   range: [number, number]
   loading: boolean
   groupBy: 'category' | 'app' | 'site' | 'series'
-  period: 'day' | 'week' | 'month'
 }>()
 const emit = defineEmits<{
   'update:groupBy': ['category' | 'app' | 'site' | 'series']
-  'update:period': ['day' | 'week' | 'month']
   search: [string]
 }>()
 
 const TABS = ['category', 'app', 'site', 'series'] as const
-const PERIODS = ['day', 'week', 'month'] as const
 
 function tabLabel(id: (typeof TABS)[number]): string {
   // "series" هو تبويب "محتوى"
@@ -156,13 +153,6 @@ async function refreshContent() {
         {{ tabLabel(tabId) }}
       </button>
       <span class="spacer"></span>
-      <div class="period-switch" role="group" aria-label="الفلترة الزمنية">
-        <button v-for="pId in PERIODS" :key="pId"
-          class="pill mini" :class="{ on: period === pId }"
-          @click="emit('update:period', pId)">
-          {{ t(`analysis.period.${pId}`) }}
-        </button>
-      </div>
     </div>
 
     <div class="a-content">
@@ -228,11 +218,7 @@ async function refreshContent() {
 </template>
 
 <style scoped>
-.tabs-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.pill.mini { padding: 0.2rem 0.6rem; font-size: 0.75rem; }
-.period-switch { display: inline-flex; gap: 0.15rem; align-self: center; background: var(--surface-soft); border-radius: 999px; padding: 0.15rem; }
-.period-switch .pill { background: transparent; border: none; }
-.period-switch .pill.on { background: var(--accent); color: #fff; }
+.tabs-row { display: flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0; }
 .spacer { flex: 1; }
 .analysis { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0.9rem; padding: 1.1rem 1.2rem; overflow: hidden; }
 .a-content { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; padding-inline-end: 0.3rem; }

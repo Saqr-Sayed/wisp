@@ -16,11 +16,29 @@ wisp-core = { path = "../../wisp-core" }
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "4"
 notify-rust = "4"
+glib = "0.18"
+webkit2gtk = "2.0"
+webkit2gtk-sys = "2.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 notify-rust = "4"
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
 winreg = "0.52"
+dirs = "5"
+# ponytail: windows 0.61 (matching the 0.61.3 crate cached in the offline registry;
+# its satellites windows-core 0.61.2 etc. are cached too, and msys2/bash staging is
+# set up for cross-checking in CI). Features cover SMTC media + WTS session events.
+windows = { version = "0.61", features = [
+    "Foundation",
+    "Media_Control",
+    "Media_MediaProperties",
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_SystemInformation",
+    "Win32_System_WinRT",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [features]
 default = ["custom-protocol"]
