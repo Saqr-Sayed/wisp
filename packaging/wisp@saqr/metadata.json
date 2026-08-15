@@ -1,0 +1,7 @@
+{
+  "uuid": "wisp@saqr",
+  "name": "Wisp Window Source",
+  "description": "Exposes the active window (app id + title) over D-Bus for the Wisp activity tracker",
+  "shell-version": ["50"],
+  "version": 1
+}

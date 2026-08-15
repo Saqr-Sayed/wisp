@@ -1,0 +1,14 @@
+[Unit]
+Description=Wisp Activity Tracker
+After=graphical-session.target
+BindsTo=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=com.saqr.wisp
+ExecStart=%h/.local/bin/wisp-daemon
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

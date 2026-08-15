@@ -1,4 +1,4 @@
-name: windows-smoke
+name: windows
 
 on:
   push:
@@ -53,3 +53,29 @@ jobs:
           print('app rows:', n_app)
           print('SMOKE OK')
           EOF
+
+  # Tag-only job: produce the installer bundles for the GitHub release.
+  build-installers:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (MSVC)
+        run: rustup default stable-msvc
+
+      - name: Build installers (NSIS + MSI)
+        working-directory: wisp-ui
+        run: |
+          npm ci
+          npm run tauri build -- --bundles nsis msi
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: |
+            wisp-ui/src-tauri/target/release/bundle/nsis/*.exe
+            wisp-ui/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
