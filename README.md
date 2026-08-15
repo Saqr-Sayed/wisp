@@ -46,7 +46,9 @@ machine.
 
 ### Option A: release packages (recommended)
 
-Download from the [releases page](https://github.com/Saqr-Sayed/wisp/releases):
+Releases are tagged `v1`, `v2`, … (package filenames keep full semver
+versions like `1.0.0`). Download from the
+[releases page](https://github.com/Saqr-Sayed/wisp/releases):
 
 - RPM (Fedora/RHEL/OpenSUSE): `Wisp-1.0.0-1.x86_64.rpm`
 - DEB (Debian/Ubuntu/Mint): `Wisp_1.0.0_amd64.deb`

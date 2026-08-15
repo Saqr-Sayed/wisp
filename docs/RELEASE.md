@@ -15,8 +15,8 @@ cargo build --release -p wisp-daemon   # from workspace root
 ```
 
 Outputs (Fedora 44, x86_64):
-- `target/release/bundle/deb/Wisp_0.1.0_amd64.deb`
-- `target/release/bundle/rpm/Wisp-0.1.0-1.x86_64.rpm`
+- `target/release/bundle/deb/Wisp_1.0.0_amd64.deb`
+- `target/release/bundle/rpm/Wisp-1.0.0-1.x86_64.rpm`
 - `target/release/wisp-ui`, `target/release/wisp-daemon` (raw binaries)
 
 Note: AppImage bundling is disabled in `tauri.conf.json` (`targets: ["deb","rpm"]`).
@@ -111,7 +111,7 @@ npm install
 npm run tauri build
 ```
 
-Output: `wisp-ui\src-tauri\target\release\bundle\nsis\Wisp_0.1.0_x64-setup.exe`
+Output: `wisp-ui\src-tauri\target\release\bundle\nsis\Wisp_1.0.0_x64-setup.exe`
 (plus an `.msi`). The first Windows build takes several minutes (full Rust
 compile); rebuilds are incremental.
 
@@ -120,7 +120,7 @@ Windows or in a Windows CI runner.
 
 ### Install
 
-Run the installer (`Wisp_0.1.0_x64-setup.exe`). The binary is unsigned, so
+Run the installer (`Wisp_1.0.0_x64-setup.exe`). The binary is unsigned, so
 SmartScreen may warn — "More info → Run anyway". The app installs
 per-user, registers autostart on first run, and stores data in
 `%LOCALAPPDATA%\wisp\activity.db`.
