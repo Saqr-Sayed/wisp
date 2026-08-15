@@ -1,5 +1,9 @@
 # Wisp
 
+![CI](https://img.shields.io/github/actions/workflow/status/Saqr-Sayed/wisp/windows-smoke.yml?branch=master)
+![License](https://img.shields.io/github/license/Saqr-Sayed/wisp)
+![Release](https://img.shields.io/github/v/release/Saqr-Sayed/wisp)
+
 A private, self-hosted **activity & time tracker** for Linux (GNOME) and
 Windows. Wisp records what you actually do on the computer — the apps and
 windows you use, the music and video you play, files you touch, and system
