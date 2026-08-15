@@ -23,10 +23,9 @@ jobs:
       - name: Smoke test — run app, drop a file, check DB
         shell: bash
         run: |
-          ls -la wisp-ui/src-tauri/target/release/ | head -30
-          find . -name "*.exe" -path "*release*" 2>/dev/null | head -5
-          APP=wisp-ui/src-tauri/target/release/wisp-ui.exe
-          [ -f "$APP" ] || APP=$(find . -name "wisp*.exe" -path "*release*" | head -1)
+          # Workspace build: binaries land in the workspace root target/.
+          ls target/release/*.exe
+          APP=target/release/wisp-ui.exe
           echo "launching: $APP"
           # Let the app register WTS + boot/login, then drop a watched file.
           "$APP" &
