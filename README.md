@@ -167,6 +167,10 @@ sqlite3 "$env:LOCALAPPDATA\wisp\activity.db" `
   network calls (the D-Bus/WebView channels are local).
 - The database is plain SQLite — you can inspect or delete it at any time.
 
+## License
+
+[MIT](LICENSE) — © 2026 Sayed Saqr. Free to use, modify and redistribute.
+
 ## Documentation & support
 
 - `docs/RELEASE.md` — full release/building details for both platforms.
