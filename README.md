@@ -73,16 +73,20 @@ sudo apt install ./wisp-v1-linux-x86_64.deb
 Then install the **daemon** and the **GNOME Shell extension**:
 
 ```bash
-# daemon (binary tarball from the same release):
-tar xzf wisp-v1-linux-x86_64-daemon.tar.gz -C ~/.local/bin
+# daemon + systemd service (tarball from the same release):
+tar xzf wisp-v1-linux-x86_64-daemon.tar.gz -C ~/.local/bin    # wisp-daemon, wisp.service
+mkdir -p ~/.config/systemd/user
+cp ~/.local/bin/wisp.service ~/.config/systemd/user/
 
 # GNOME Shell extension (zip from the same release, extracts to wisp@saqr/):
+#   (Fedora: sudo dnf install unzip if missing)
 unzip wisp-v1-linux-x86_64-gnome-extension.zip -d ~/.local/share/gnome-shell/extensions/
 ```
 
 Enable and start the services:
 
 ```bash
+systemctl --user daemon-reload
 systemctl --user enable --now wisp.service        # starts the daemon
 gnome-extensions enable wisp@saqr                 # then restart GNOME Shell (Alt+F2 → r)
 ```
