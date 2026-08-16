@@ -59,6 +59,13 @@ jobs:
           print('SMOKE OK')
           EOF
 
+      - name: Upload diagnostic exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: wisp-ui-exe
+          path: target/release/wisp-ui.exe
+          if-no-files-found: error
+
   # Tag-only job: produce the installer bundles for the GitHub release.
   build-installers:
     if: startsWith(github.ref, 'refs/tags/v')

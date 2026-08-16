@@ -96,6 +96,7 @@ onMounted(async () => {
   const stored = await getSetting('language').catch(() => 'auto')
   setLocale((stored as 'auto' | 'ar' | 'en') ?? 'auto')
   await refresh()
+  invoke('log_frontend', { msg: `[boot] first refresh ok (${dayLogs.value.length} day rows)` }).catch(() => {})
   setCategoryCache(await getCategories().catch(() => []))
   timer = window.setInterval(async () => { await refresh(); notify() }, 5000)
 })

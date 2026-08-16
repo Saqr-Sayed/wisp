@@ -497,13 +497,29 @@ mod commands {
     pub fn list_archived(db: State<'_, Arc<Db>>) -> Result<Vec<(String, String)>, String> {
         Ok(db.list_archived())
     }
+
+    /// Frontend diagnostics: appends JS errors to <data_local>/wisp/frontend.log.
+    #[tauri::command]
+    pub fn log_frontend(msg: String) -> Result<(), String> {
+        use std::io::Write;
+        let dir = dirs::data_local_dir().unwrap_or_default().join("wisp");
+        let _ = std::fs::create_dir_all(&dir);
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("frontend.log")) {
+            let _ = writeln!(f, "[{secs}] {msg}");
+        }
+        Ok(())
+    }
 }
 
 use commands::{
     add_category, add_category_member, archive_target, delete_category, delete_category_member,
     get_categories, get_category_members, get_content, get_known_apps, get_known_sites, get_limits,
     get_name_overrides, get_report, get_series, get_series_overrides, get_setting, get_site_overrides, get_status,
-    get_timeline, ignore_target, list_archived, list_ignored, notify, remove_limit, remove_name_override,
+    get_timeline, ignore_target, list_archived, list_ignored, log_frontend, notify, remove_limit, remove_name_override,
     remove_series_override, remove_site_override, rename_category, search, set_category_color, set_limit,
     set_name_override, set_series_override, set_setting, set_site_override, unarchive_target, unignore_target,
 };
@@ -535,7 +551,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            notify,
+            notify, log_frontend,
             get_timeline, get_status, search,
             get_report, get_series, get_limits, set_limit, remove_limit,
             get_name_overrides, set_name_override, remove_name_override,
