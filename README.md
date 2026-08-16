@@ -60,6 +60,7 @@ names — `wisp-<tag>-<platform>-<arch>[-<kind>].<ext>`. Download from the
 - Windows MSI: `wisp-v1-windows-x86_64.msi`
 - Windows portable exe: `wisp-v1-windows-x86_64.exe`
 - Linux daemon binary tarball: `wisp-v1-linux-x86_64-daemon.tar.gz`
+- Linux GNOME extension (zip): `wisp-v1-linux-x86_64-gnome-extension.zip`
 
 ```bash
 # Fedora/derivatives:
@@ -75,9 +76,8 @@ Then install the **daemon** and the **GNOME Shell extension**:
 # daemon (binary tarball from the same release):
 tar xzf wisp-v1-linux-x86_64-daemon.tar.gz -C ~/.local/bin
 
-# GNOME Shell extension (from source, one command):
-mkdir -p ~/.local/share/gnome-shell/extensions
-cp -r src/gnome-extension/wisp@saqr ~/.local/share/gnome-shell/extensions/
+# GNOME Shell extension (zip from the same release, extracts to wisp@saqr/):
+unzip wisp-v1-linux-x86_64-gnome-extension.zip -d ~/.local/share/gnome-shell/extensions/
 ```
 
 Enable and start the services:

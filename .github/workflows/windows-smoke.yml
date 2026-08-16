@@ -106,6 +106,12 @@ jobs:
           cp bundle/msi/*.msi "renamed/wisp-${V}-windows-x86_64.msi"
           ls -la renamed/
 
+      # GNOME Shell extension ships as a release asset too (zip of packaging/wisp@saqr).
+      - name: Zip GNOME extension
+        shell: pwsh
+        run: |
+          Compress-Archive -Path packaging/wisp@saqr -DestinationPath "target/release/renamed/wisp-$env:GITHUB_REF_NAME-linux-x86_64-gnome-extension.zip" -Force
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:

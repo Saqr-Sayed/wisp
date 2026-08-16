@@ -31,6 +31,7 @@ Every release ships the same asset names, keyed to the tag (`v1`, `v2`, …):
 | `wisp-<tag>-linux-x86_64.deb` | `bundle/deb/` (renamed) |
 | `wisp-<tag>-linux-x86_64.rpm` | `bundle/rpm/` (renamed) |
 | `wisp-<tag>-linux-x86_64-daemon.tar.gz` | `tar czf … target/release/wisp-daemon` |
+| `wisp-<tag>-linux-x86_64-gnome-extension.zip` | CI `build-installers` (zip of `packaging/wisp@saqr`) |
 
 The CI workflow renames the Windows bundles automatically; rename the Linux
 outputs locally before `gh release upload`.
