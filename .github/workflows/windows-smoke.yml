@@ -56,6 +56,16 @@ jobs:
           assert any(k == 'file_created' for k in kinds), f'no file_created row: {rows}'
           n_app = con.execute("select count(*) from activity_logs where event_type='app'").fetchone()[0]
           print('app rows:', n_app)
+          # Render regression check: the page must boot cleanly — no JS/vue errors
+          # (a crashed render = blank window, e.g. the locale-'' bug).
+          flog = os.path.join(os.environ['LOCALAPPDATA'], 'wisp', 'frontend.log')
+          print('frontend.log:', flog, 'exists:', os.path.exists(flog))
+          if os.path.exists(flog):
+              lines = open(flog).read()
+              print('frontend log tail:', '\n'.join(lines.strip().splitlines()[-3:]))
+              assert '[boot] app mounted' in lines, f'page never mounted: {lines}'
+              bad = [l for l in lines.splitlines() if '[error]' in l or '[vue]' in l or '[rejection]' in l]
+              assert not bad, f'frontend errors: {bad}'
           print('SMOKE OK')
           EOF
 

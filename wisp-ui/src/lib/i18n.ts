@@ -20,8 +20,11 @@ export function t(key: string, params?: Record<string, string | number>): string
   return Object.entries(params).reduce((acc, [k, v]) => acc.replace(`{${k}}`, String(v)), s)
 }
 
-export function setLocale(l: Setting) {
-  const next = l === 'auto' ? detectSystem() : l
+export function setLocale(l: string) {
+  // Trust boundary: backend/settings may hand us anything (e.g. '' for unset).
+  // Anything that isn't a real locale falls back to the system detection —
+  // an invalid locale.value would crash every t() render.
+  const next: Locale = (l === 'ar' || l === 'en') ? l : detectSystem()
   locale.value = next
   if (typeof document !== 'undefined') {
     document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr'
