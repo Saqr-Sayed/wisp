@@ -19,6 +19,22 @@ Outputs (Fedora 44, x86_64):
 - `target/release/bundle/rpm/Wisp-1.0.0-1.x86_64.rpm`
 - `target/release/wisp-ui`, `target/release/wisp-daemon` (raw binaries)
 
+### Release assets — unified naming scheme
+
+Every release ships the same asset names, keyed to the tag (`v1`, `v2`, …):
+
+| Asset | Source |
+|-------|--------|
+| `wisp-<tag>-windows-x86_64.exe` | CI `build-installers` (renamed from `wisp-ui.exe`) |
+| `wisp-<tag>-windows-x86_64-setup.exe` | CI `build-installers` (NSIS) |
+| `wisp-<tag>-windows-x86_64.msi` | CI `build-installers` (MSI) |
+| `wisp-<tag>-linux-x86_64.deb` | `bundle/deb/` (renamed) |
+| `wisp-<tag>-linux-x86_64.rpm` | `bundle/rpm/` (renamed) |
+| `wisp-<tag>-linux-x86_64-daemon.tar.gz` | `tar czf … target/release/wisp-daemon` |
+
+The CI workflow renames the Windows bundles automatically; rename the Linux
+outputs locally before `gh release upload`.
+
 Note: AppImage bundling is disabled in `tauri.conf.json` (`targets: ["deb","rpm"]`).
 
 ### Install (user-level, no root)
@@ -112,15 +128,16 @@ npm run tauri build
 ```
 
 Output: `wisp-ui\src-tauri\target\release\bundle\nsis\Wisp_1.0.0_x64-setup.exe`
-(plus an `.msi`). The first Windows build takes several minutes (full Rust
-compile); rebuilds are incremental.
+(plus an `.msi`) — the CI `build-installers` job renames them to the unified
+scheme (`wisp-<tag>-windows-x86_64[-setup].*`). The first Windows build takes
+several minutes (full Rust compile); rebuilds are incremental.
 
 Cross-compiling from Linux is not supported for Tauri bundling — build on
 Windows or in a Windows CI runner.
 
 ### Install
 
-Run the installer (`Wisp_1.0.0_x64-setup.exe`). The binary is unsigned, so
+Run the installer (`wisp-<tag>-windows-x86_64-setup.exe`). The binary is unsigned, so
 SmartScreen may warn — "More info → Run anyway". The app installs
 per-user, registers autostart on first run, and stores data in
 `%LOCALAPPDATA%\wisp\activity.db`.

@@ -50,26 +50,30 @@ machine.
 
 ### Option A: release packages (recommended)
 
-Releases are tagged `v1`, `v2`, … (package filenames keep full semver
-versions like `1.0.0`). Download from the
-[releases page](https://github.com/Saqr-Sayed/wisp/releases):
+Releases are tagged `v1`, `v2`, … and every release ships the same asset
+names — `wisp-<tag>-<platform>-<arch>[-<kind>].<ext>`. Download from the
+[releases page](https://github.com/Saqr-Sayed/wisp/releases) (e.g. for v1):
 
-- RPM (Fedora/RHEL/OpenSUSE): `Wisp-1.0.0-1.x86_64.rpm`
-- DEB (Debian/Ubuntu/Mint): `Wisp_1.0.0_amd64.deb`
+- RPM (Fedora/RHEL/OpenSUSE): `wisp-v1-linux-x86_64.rpm`
+- DEB (Debian/Ubuntu/Mint): `wisp-v1-linux-x86_64.deb`
+- Windows installer (NSIS): `wisp-v1-windows-x86_64-setup.exe`
+- Windows MSI: `wisp-v1-windows-x86_64.msi`
+- Windows portable exe: `wisp-v1-windows-x86_64.exe`
+- Linux daemon binary tarball: `wisp-v1-linux-x86_64-daemon.tar.gz`
 
 ```bash
 # Fedora/derivatives:
-sudo dnf install ./Wisp-1.0.0-1.x86_64.rpm
+sudo dnf install ./wisp-v1-linux-x86_64.rpm
 
 # Debian/derivatives:
-sudo apt install ./Wisp_1.0.0_amd64.deb
+sudo apt install ./wisp-v1-linux-x86_64.deb
 ```
 
 Then install the **daemon** and the **GNOME Shell extension**:
 
 ```bash
 # daemon (binary tarball from the same release):
-tar xzf wisp-daemon-1.0.0-linux-x86_64.tar.gz -C ~/.local/bin
+tar xzf wisp-v1-linux-x86_64-daemon.tar.gz -C ~/.local/bin
 
 # GNOME Shell extension (from source, one command):
 mkdir -p ~/.local/share/gnome-shell/extensions
@@ -122,7 +126,8 @@ in the tray.
 
 ### Option A: installer (recommended)
 
-1. Download `Wisp_1.0.0_x64-setup.exe` (NSIS) or `.msi` from the
+1. Download `wisp-v1-windows-x86_64-setup.exe` (NSIS) or
+   `wisp-v1-windows-x86_64.msi` from the
    [releases page](https://github.com/Saqr-Sayed/wisp/releases).
 2. Run it — per-user install, no admin needed.
 3. The binary is unsigned, so SmartScreen may warn: **More info → Run anyway**.
@@ -137,7 +142,8 @@ in the tray.
 # Visual Studio Build Tools 2022 (Desktop development with C++), Node.js 18+
 cd wisp-ui
 npm ci
-npm run tauri build          # outputs bundle\nsis\Wisp_1.0.0_x64-setup.exe (+ .msi)
+npm run tauri build          # produces NSIS + MSI; release uploads rename
+                             # them to wisp-<tag>-windows-x86_64[-setup].*
 ```
 
 ### Verifying the Windows install

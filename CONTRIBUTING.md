@@ -41,5 +41,6 @@ cargo check --target x86_64-pc-windows-msvc -p wisp-ui   # Windows side (see doc
 ## Releases
 
 Releases are tagged `v1`, `v2`, … (package versions keep semver). Pushing a
-`v*` tag builds the Windows installers; upload the bundles as release assets
-per `docs/RELEASE.md`.
+`v*` tag builds the Windows installers and renames them to the unified scheme
+(`wisp-<tag>-windows-x86_64[-setup].*`); rename the Linux bundles the same
+way and upload everything as release assets (see `docs/RELEASE.md`).

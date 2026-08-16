@@ -93,11 +93,22 @@ jobs:
           npm ci
           npm run tauri build -- --bundles nsis msi
 
+      # Unified release-asset scheme: wisp-<tag>-<platform>-<arch>[-<kind>].<ext>
+      # (tag style v1, v2, …). Keeps every release's assets identically named.
+      - name: Rename bundles to unified scheme
+        shell: bash
+        run: |
+          V="$GITHUB_REF_NAME"
+          cd target/release
+          mkdir -p renamed
+          cp wisp-ui.exe "renamed/wisp-${V}-windows-x86_64.exe"
+          cp bundle/nsis/*-setup.exe "renamed/wisp-${V}-windows-x86_64-setup.exe"
+          cp bundle/msi/*.msi "renamed/wisp-${V}-windows-x86_64.msi"
+          ls -la renamed/
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installers
-          path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
+          name: windows-release-bundles
+          path: target/release/renamed/*
           if-no-files-found: error
