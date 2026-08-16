@@ -32,6 +32,11 @@ jobs:
           sleep 12
           echo "smoke-test-$$.txt" > "$USERPROFILE/Documents/wisp-smoke-$$.txt"
           sleep 6
+          # Render-path probe: a healthy Tauri app spawns a WebView2 (msedgewebview2)
+          # child process. Absent = blank window (webview never initialized).
+          powershell -Command "Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count" | tee webview-count.txt
+          WV=$(cat webview-count.txt | tr -d '[:space:]')
+          echo "webview2 processes: '$WV'"
           # Give the tracker a moment, then close the app (tray app: taskkill).
           taskkill //IM wisp-ui.exe //F 2>/dev/null || true
           sleep 2
