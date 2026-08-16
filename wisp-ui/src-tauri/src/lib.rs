@@ -268,6 +268,22 @@ mod commands {
         let reply = call("ListArchived", &()).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
     }
+
+    /// Frontend diagnostics: appends JS errors to <data_local>/wisp/frontend.log.
+    #[tauri::command]
+    pub fn log_frontend(msg: String) -> Result<(), String> {
+        use std::io::Write;
+        let dir = dirs::data_local_dir().unwrap_or_default().join("wisp");
+        let _ = std::fs::create_dir_all(&dir);
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("frontend.log")) {
+            let _ = writeln!(f, "[{secs}] {msg}");
+        }
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -515,7 +531,7 @@ mod commands {
     }
 }
 
-use commands::{
+    use commands::{
     add_category, add_category_member, archive_target, delete_category, delete_category_member,
     get_categories, get_category_members, get_content, get_known_apps, get_known_sites, get_limits,
     get_name_overrides, get_report, get_series, get_series_overrides, get_setting, get_site_overrides, get_status,
