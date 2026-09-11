@@ -135,15 +135,17 @@ fn normalize_digits(s: &str) -> String {
 
 /// `الدرس ٢٦ - mpv` → `(series="الدرس", episode="26", weak=false)`
 /// weak=true: لا تطابق (سلسلة فارغة) أو سقوط الكلمة المفتاحية اسماً بلا اسم سابق.
+// ponytail: compiled once — parse_episode runs per row via clean_title in get_content.
+static EPISODE_RES: std::sync::LazyLock<[regex::Regex; 4]> = std::sync::LazyLock::new(|| [
+    regex::Regex::new(r"(?i)^(.+?)[\s.\-–—]*s(\d{1,2})e(\d{1,3})$").unwrap(),
+    regex::Regex::new(r"(?i)^(.+?)[\s.\-–—]*ep(?:\.|isode)?\s*(\d{1,3})$").unwrap(),
+    regex::Regex::new(r"^(?:(.+?)[\s.\-–—]*)?(\d{1,2})x(\d{1,3})$").unwrap(),
+    regex::Regex::new(r"^(?:(.+?)[\s.\-–—]*)?(الحلقة|الدرس|الجزء)\s*(\d+)$").unwrap(),
+]);
 fn parse_episode(raw: &str) -> (String, String, bool) {
     let t = normalize_digits(raw.trim());
     // أولوية: SxxEyy ثم EPn/Episode ثم نمط قديم 3x05 ثم كلمة عربية (قد تكون الكلمة نفسها اسم المسلسل)
-    let patterns = [r"(?i)^(.+?)[\s.\-–—]*s(\d{1,2})e(\d{1,3})$",
-                    r"(?i)^(.+?)[\s.\-–—]*ep(?:\.|isode)?\s*(\d{1,3})$",
-                    r"^(?:(.+?)[\s.\-–—]*)?(\d{1,2})x(\d{1,3})$",
-                    r"^(?:(.+?)[\s.\-–—]*)?(الحلقة|الدرس|الجزء)\s*(\d+)$"];
-    for (i, pat) in patterns.iter().enumerate() {
-        let re = regex::Regex::new(pat).unwrap();
+    for (i, re) in EPISODE_RES.iter().enumerate() {
         if let Some(c) = re.captures(&t) {
             let series = c.get(1).map(|m| m.as_str().trim().trim_end_matches('-').trim()).unwrap_or("")
                 .to_string();

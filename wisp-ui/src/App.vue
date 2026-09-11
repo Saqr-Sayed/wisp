@@ -18,6 +18,7 @@ const dayLogs = ref<LogEntry[]>([])
 const weekLogs = ref<LogEntry[]>([])
 const yearLogs = ref<LogEntry[]>([])
 const nowMonthLogs = ref<LogEntry[]>([])
+const monthLogs = ref<LogEntry[]>([])
 const historyLogs = ref<LogEntry[]>([])
 const currentWeekLogs = ref<LogEntry[]>([])
 const limits = ref<[string, string, number][]>([])
@@ -28,25 +29,44 @@ const groupBy = ref<'app' | 'category' | 'site' | 'series'>('category')
 const period = ref<'day' | 'week' | 'month'>('day')
 const searchQuery = ref('')
 
+// ponytail: cache year/history (heavy) — refetch only when range key changes
+let lastYear = 0
+let lastHistFrom = 0
+let lastHistTo = 0
+
 async function refresh() {
   try {
     nowSec.value = Math.floor(Date.now() / 1000)
     const [dFrom, dTo] = dayRange(selectedDay.value)
-    dayLogs.value = await getTimeline(dFrom, dTo)
     // الأسبوع الحالي (السبت→الجمعة): يبدأ اليوم السبت
     const [wFrom] = dayRange(daysOfWeek(0)[0])
     const [, wTo] = dayRange(daysOfWeek(0)[6])
-    weekLogs.value = await getTimeline(wFrom, wTo)
-    const [yFrom, yTo] = yearRange(selectedDay.value)
-    yearLogs.value = await getTimeline(yFrom, yTo)
+    const [mFrom, mTo] = monthRange(selectedDay.value)
     const [nmFrom, nmTo] = monthRange(new Date())
-    nowMonthLogs.value = await getTimeline(nmFrom, nmTo)
-    currentWeekLogs.value = weekLogs.value
     // 8 أسابيع كاملة تسبق الأسبوع الحالي (لأعمدة «آخر 8 أسابيع» والمتوسطات)
     const [hFrom] = dayRange(daysOfWeek(8)[0])
     const [, hTo] = dayRange(daysOfWeek(1)[6])
-    historyLogs.value = await getTimeline(hFrom, hTo)
-    limits.value = await getLimits()
+    const yKey = selectedDay.value.getFullYear()
+    const needYear = yKey !== lastYear
+    const needHist = hFrom !== lastHistFrom || hTo !== lastHistTo
+    const [yFrom, yTo] = yearRange(selectedDay.value)
+    const [d, w, m, nm, lim, y, h] = await Promise.all([
+      getTimeline(dFrom, dTo),
+      getTimeline(wFrom, wTo),
+      getTimeline(mFrom, mTo),
+      getTimeline(nmFrom, nmTo),
+      getLimits(),
+      needYear ? getTimeline(yFrom, yTo) : Promise.resolve(yearLogs.value),
+      needHist ? getTimeline(hFrom, hTo) : Promise.resolve(historyLogs.value),
+    ])
+    dayLogs.value = d
+    weekLogs.value = w
+    monthLogs.value = m
+    nowMonthLogs.value = nm
+    limits.value = lim
+    if (needYear) { yearLogs.value = y; lastYear = yKey }
+    if (needHist) { historyLogs.value = h; lastHistFrom = hFrom; lastHistTo = hTo }
+    currentWeekLogs.value = w
     evaluateLimits()
     error.value = false
   } catch {
@@ -111,7 +131,7 @@ const analysisRange = computed<[number, number]>(() => {
     const wd = weekDays.value
     return [dayRange(wd[0])[0], dayRange(wd[6])[1]]
   }
-  return yearRange(sel)
+  return monthRange(sel)
 })
 
 function selectDay(d: Date) {
@@ -123,7 +143,7 @@ function selectDay(d: Date) {
 const timelineLogs = computed(() => {
   if (period.value === 'day') return dayLogs.value
   if (period.value === 'week') return weekLogs.value
-  return yearLogs.value
+  return monthLogs.value
 })
 
 const ribbonSegs = computed(() => {
