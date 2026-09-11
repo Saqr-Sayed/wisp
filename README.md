@@ -4,7 +4,8 @@
 ![License](https://img.shields.io/github/license/Saqr-Sayed/wisp)
 ![Release](https://img.shields.io/github/v/release/Saqr-Sayed/wisp)
 
-A private, self-hosted **activity & time tracker** for Linux (GNOME) and
+A private, self-hosted **activity & time tracker** for Linux (GNOME, KDE,
+Hyprland, Sway, XFCE/Cinnamon/MATE via X11, COSMIC fallback) and
 Windows. Wisp records what you actually do on the computer — the apps and
 windows you use, the music and video you play, files you touch, and system
 events (boot, login, sleep, wake, shutdown) — into a local SQLite database.
@@ -40,9 +41,10 @@ machine.
 | Component | Role |
 |---|---|
 | `wisp-core` | shared library: SQLite schema, classifier/enrichment, tracker loop, file watcher, system-event store. 103 unit tests. |
-| `wisp-daemon` (Linux only) | D-Bus service (`com.saqr.wisp`) that polls the active window (via the GNOME Shell extension), reads MPRIS media, watches files and logind sessions. |
+| `wisp-daemon` (Linux only) | D-Bus service (`com.saqr.wisp`) that polls the active window (via GNOME extension OR KWin script OR native sockets: Hyprland socket/hyprctl, Sway i3-ipc, X11), reads MPRIS media, watches files and logind sessions. |
 | `wisp-ui` (Tauri v2) | desktop app. On Linux it talks to the daemon over D-Bus; on Windows it **runs the tracker in-process** (no daemon needed) and shows the same UI (Vue 3). |
-| GNOME Shell extension `wisp@saqr` | provides active-window info to the daemon. |
+| GNOME Shell extension `wisp@saqr` | provides active-window info on GNOME. |
+| KWin script `kwin-wisp` | pushes active-window info on KDE/Plasma (Hyprland/Sway/X11 need no extra component; COSMIC falls back to idle). |
 
 ---
 
@@ -61,6 +63,7 @@ names — `wisp-<tag>-<platform>-<arch>[-<kind>].<ext>`. Download from the
 - Windows portable exe: `wisp-v1-windows-x86_64.exe`
 - Linux daemon binary tarball: `wisp-v1-linux-x86_64-daemon.tar.gz`
 - Linux GNOME extension (zip): `wisp-v1-linux-x86_64-gnome-extension.zip`
+- Linux KWin script (zip): `wisp-v1-linux-x86_64-kwin-wisp.zip`
 
 ```bash
 # Fedora/derivatives:
@@ -73,8 +76,11 @@ sudo apt install ./wisp-v1-linux-x86_64.deb
 > **Note:** the tray icon needs `libayatana-appindicator3` at runtime
 > (Debian/Ubuntu: `libayatana-appindicator3-1`; Fedora: `libappindicator-gtk3`).
 > If the tray icon is missing, install that package and restart Wisp.
+> Autostart is a shared tray toggle (Settings) backed by
+> `~/.config/autostart/wisp.desktop` (`wisp-daemon --install` / `--uninstall`).
 
-Then install the **daemon** and the **GNOME Shell extension**:
+Then install the **daemon** plus the backend for your DE (GNOME extension OR
+KWin script; Hyprland/Sway/X11 need no extra component):
 
 ```bash
 # daemon + systemd service (tarball from the same release):
@@ -85,6 +91,12 @@ cp ~/.local/bin/wisp.service ~/.config/systemd/user/
 # GNOME Shell extension (zip from the same release, extracts to wisp@saqr/):
 #   (Fedora: sudo dnf install unzip if missing)
 unzip wisp-v1-linux-x86_64-gnome-extension.zip -d ~/.local/share/gnome-shell/extensions/
+
+# KDE/Plasma only — KWin script (zip from the same release):
+#   (Fedora: sudo dnf install unzip if missing)
+unzip wisp-v1-linux-x86_64-kwin-wisp.zip -d ~/.local/share/kwin/scripts/
+kpackagetool6 --type=KWin/Script -i ~/.local/share/kwin/scripts/kwin-wisp 2>/dev/null || true
+qdbus6 org.kde.KWin /KWin reconfigure 2>/dev/null || qdbus org.kde.KWin /KWin reconfigure 2>/dev/null || true
 ```
 
 Enable and start the services:
@@ -92,7 +104,9 @@ Enable and start the services:
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now wisp.service        # starts the daemon
+# GNOME only:
 gnome-extensions enable wisp@saqr                 # then restart GNOME Shell (Alt+F2 → r)
+# KDE only: enable kwin-wisp in System Settings → Window Management → KWin Scripts (then Apply)
 ```
 
 ### Option B: build from source
@@ -108,10 +122,15 @@ cp target/release/wisp-daemon ~/.local/bin/
 cd wisp-ui
 npm ci && npm run tauri build        # produces .deb + .rpm in target/release/bundle/
 
-# install the daemon service + extension (ships in the repo under packaging/):
+# install the daemon service + backend (ships in the repo under packaging/):
 mkdir -p ~/.config/systemd/user ~/.local/share/gnome-shell/extensions
 cp ../packaging/wisp.service ~/.config/systemd/user/
+# GNOME:
 cp -r ../packaging/wisp@saqr ~/.local/share/gnome-shell/extensions/
+# KDE/Plasma instead:
+# cp -r ../packaging/kwin-wisp ~/.local/share/kwin/scripts/
+# kpackagetool6 --type=KWin/Script -i ~/.local/share/kwin/scripts/kwin-wisp
+# (Hyprland/Sway/X11 need no extra component)
 systemctl --user daemon-reload && systemctl --user enable --now wisp.service
 ```
 
@@ -119,7 +138,7 @@ systemctl --user daemon-reload && systemctl --user enable --now wisp.service
 
 ```bash
 systemctl --user status wisp.service        # should be active
-journalctl --user -u wisp.service -f        # "file watcher active on …" + "GNOME Shell extension backend active"
+journalctl --user -u wisp.service -f        # "file watcher active on …" + "<DE> backend active" (GNOME/KDE/Hyprland/Sway/X11)
 sqlite3 ~/.local/share/wisp/activity.db \
   "SELECT detail, datetime(start_time,'unixepoch') FROM activity_logs WHERE event_type='system' ORDER BY id DESC LIMIT 10;"
 # expected kinds: boot, login, sleep, wake, file_created, file_deleted, …
