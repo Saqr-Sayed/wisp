@@ -78,7 +78,7 @@ async fn main() {
 
     watch_files(db.clone());
 
-    let (_conn, tracker) = dbus_api::serve(db.clone()).await.unwrap();
+    let (_conn, tracker, _kde_cache) = dbus_api::serve(db.clone()).await.unwrap();
 
     let handle = tokio::runtime::Handle::current();
     let db2 = db.clone();

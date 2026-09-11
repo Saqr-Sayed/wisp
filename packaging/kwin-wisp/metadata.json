@@ -1,0 +1,13 @@
+{
+    "KPlugin": {
+        "Authors": [{ "Name": "Wisp" }],
+        "Description": "Pushes active-window changes to the Wisp activity tracker over D-Bus.",
+        "EnabledByDefault": true,
+        "Id": "kwin-wisp",
+        "License": "MIT",
+        "Name": "kwin-wisp",
+        "Version": "1.0"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

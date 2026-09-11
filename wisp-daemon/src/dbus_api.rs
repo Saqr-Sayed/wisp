@@ -1,3 +1,4 @@
+use crate::backends::{new_active_cache, ActiveCache};
 use std::sync::{Arc, Mutex};
 use wisp_core::db::{Db, LogEntry};
 use zbus::{interface, object_server::SignalContext, ConnectionBuilder};
@@ -200,14 +201,58 @@ impl ActivityTracker {
     async fn window_changed(&self, ctxt: &zbus::object_server::SignalContext<'_>, app_name: &str, window_title: &str, since: i64) -> zbus::Result<()>;
 }
 
-pub async fn serve(db: Arc<Db>) -> zbus::Result<(zbus::Connection, ActivityTracker)> {
+/// Second D-Bus surface for the KWin script: the daemon owns bus name
+/// `com.saqr.wisp.WindowSource` at `/com/saqr/wisp/WindowSource` with interface
+/// `com.saqr.wisp.WindowSource`. zbus exposes `push_active` as `PushActive`;
+/// the `push_active_updates_cache` test below pins the cache behavior.
+#[derive(Clone)]
+pub struct WindowSourcePush {
+    cache: ActiveCache,
+}
+
+#[interface(name = "com.saqr.wisp.WindowSource")]
+impl WindowSourcePush {
+    async fn push_active(&self, app: String, title: String) {
+        *self.cache.lock().unwrap_or_else(|e| e.into_inner()) = (app, title);
+    }
+}
+
+pub async fn serve(db: Arc<Db>) -> zbus::Result<(zbus::Connection, ActivityTracker, ActiveCache)> {
     let tracker = ActivityTracker::new(db);
     let emitter = tracker.clone();
+    let cache = new_active_cache();
+    let push = WindowSourcePush { cache: cache.clone() };
     let conn = ConnectionBuilder::session()?
         .name("com.saqr.wisp")?
+        .name("com.saqr.wisp.WindowSource")?
         .serve_at("/com/saqr/wisp", tracker)?
+        .serve_at("/com/saqr/wisp/WindowSource", push)?
         .build()
         .await?;
     emitter.set_connection(conn.clone());
-    Ok((conn, emitter))
+    Ok((conn, emitter, cache))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backends::new_active_cache;
+
+    #[test]
+    fn push_active_updates_cache() {
+        let cache = new_active_cache();
+        let push = WindowSourcePush { cache: cache.clone() };
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(push.push_active(
+                "org.kde.dolphin".to_string(),
+                "Home".to_string(),
+            ));
+        assert_eq!(
+            *cache.lock().unwrap(),
+            ("org.kde.dolphin".to_string(), "Home".to_string())
+        );
+    }
 }

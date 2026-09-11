@@ -109,6 +109,7 @@ impl WindowSource for GnomeBackend {
 /// Cosmic, and X11 variants plus their match arms here.
 pub enum AnyBackend {
     Gnome(GnomeBackend),
+    Kde(KdeBackend),
     Idle,
 }
 
@@ -116,8 +117,53 @@ impl WindowSource for AnyBackend {
     fn active_window(&mut self) -> (String, String) {
         match self {
             AnyBackend::Gnome(b) => b.active_window(),
+            AnyBackend::Kde(b) => b.active_window(),
             AnyBackend::Idle => (String::new(), String::new()),
         }
+    }
+}
+
+/// KDE: the KWin script `packaging/kwin-wisp` pushes active-window changes over
+/// D-Bus (`PushActive`); this backend clones the cached pair (starts ("",""),
+/// fills on first push). `new` returns `Some` when the desktop hint is KDE or
+/// the kwin-wisp script dir exists — a push backend cannot prove liveness
+/// synchronously, so construction is hint-based, not handshake-based.
+pub struct KdeBackend {
+    cache: ActiveCache,
+}
+
+impl KdeBackend {
+    pub fn script_dir() -> Option<std::path::PathBuf> {
+        let home = dirs::home_dir()?;
+        let user = home.join(".local/share/kwin/scripts/kwin-wisp");
+        if user.is_dir() {
+            return Some(user);
+        }
+        let sys = std::path::PathBuf::from("/usr/share/kwin/scripts/kwin-wisp");
+        if sys.is_dir() {
+            return Some(sys);
+        }
+        None
+    }
+
+    fn hinted() -> bool {
+        detect_desktop()
+            .iter()
+            .any(|h| h == "kde" || h == "plasma")
+    }
+
+    pub fn new(cache: ActiveCache) -> Option<Self> {
+        if Self::hinted() || Self::script_dir().is_some() {
+            Some(KdeBackend { cache })
+        } else {
+            None
+        }
+    }
+}
+
+impl WindowSource for KdeBackend {
+    fn active_window(&mut self) -> (String, String) {
+        self.cache.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
@@ -239,5 +285,33 @@ mod tests {
     fn idle_returns_empty_pair() {
         let mut b = AnyBackend::Idle;
         assert_eq!(b.active_window(), (String::new(), String::new()));
+    }
+
+    #[test]
+    fn kde_starts_empty_and_reads_pushed_cache() {
+        let cache = new_active_cache();
+        let mut b = KdeBackend { cache: cache.clone() };
+        assert_eq!(b.active_window(), (String::new(), String::new()));
+        *cache.lock().unwrap() =
+            ("org.kde.dolphin".to_string(), "Home".to_string());
+        assert_eq!(
+            b.active_window(),
+            ("org.kde.dolphin".to_string(), "Home".to_string())
+        );
+    }
+
+    #[test]
+    fn kde_constructs_only_on_hint_or_script_dir() {
+        // Neither KDE hint nor script dir on CI ⇒ None. A push backend cannot
+        // prove liveness synchronously, so construction is hint-based.
+        let _guard = env_lock().lock().unwrap();
+        let _e = EnvGuard::set(&[
+            ("XDG_CURRENT_DESKTOP", Some("GNOME")),
+            ("DESKTOP_SESSION", Some("gnome")),
+            ("HOME", None),
+        ]);
+        if KdeBackend::script_dir().is_none() {
+            assert!(KdeBackend::new(new_active_cache()).is_none());
+        }
     }
 }
