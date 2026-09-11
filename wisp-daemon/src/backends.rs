@@ -105,11 +105,12 @@ impl WindowSource for GnomeBackend {
     }
 }
 
-/// First-probe-wins backend chain. Later tasks add Kde, Hyprland, Sway,
+/// First-probe-wins backend chain. Later tasks add Sway,
 /// Cosmic, and X11 variants plus their match arms here.
 pub enum AnyBackend {
     Gnome(GnomeBackend),
     Kde(KdeBackend),
+    Hyprland(HyprlandBackend),
     Idle,
 }
 
@@ -118,6 +119,7 @@ impl WindowSource for AnyBackend {
         match self {
             AnyBackend::Gnome(b) => b.active_window(),
             AnyBackend::Kde(b) => b.active_window(),
+            AnyBackend::Hyprland(b) => b.active_window(),
             AnyBackend::Idle => (String::new(), String::new()),
         }
     }
@@ -164,6 +166,98 @@ impl KdeBackend {
 impl WindowSource for KdeBackend {
     fn active_window(&mut self) -> (String, String) {
         self.cache.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::time::Duration;
+
+/// Hyprland: request socket `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket.sock`
+/// (`j/activewindow` → JSON `{class, title}`), falling back to `hyprctl activewindow -j`.
+/// Missing socket and missing `hyprctl` ⇒ probe fails. Never blocks: 200ms socket timeouts,
+/// any error ⇒ ("","") for that poll.
+pub struct HyprlandBackend {
+    sock: PathBuf,
+}
+
+impl HyprlandBackend {
+    pub fn socket_path() -> Option<PathBuf> {
+        let sig = std::env::var("HYPRLAND_INSTANCE_SIGNATURE")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+        let rt = std::env::var("XDG_RUNTIME_DIR")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+        Some(PathBuf::from(rt).join("hypr").join(sig).join(".socket.sock"))
+    }
+
+    fn has_hyprctl() -> bool {
+        std::process::Command::new("hyprctl")
+            .arg("version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    pub fn new() -> Option<Self> {
+        if let Some(p) = Self::socket_path() {
+            if p.exists() {
+                return Some(HyprlandBackend { sock: p });
+            }
+        }
+        if Self::has_hyprctl() {
+            return Some(HyprlandBackend { sock: PathBuf::new() });
+        }
+        None
+    }
+
+    fn query_socket(&self) -> Option<(String, String)> {
+        if self.sock.as_os_str().is_empty() {
+            return None;
+        }
+        let mut s = UnixStream::connect(&self.sock).ok()?;
+        s.set_read_timeout(Some(Duration::from_millis(200))).ok()?;
+        s.set_write_timeout(Some(Duration::from_millis(200))).ok()?;
+        s.write_all(b"j/activewindow").ok()?;
+        let mut buf = String::new();
+        s.read_to_string(&mut buf).ok()?;
+        Some(parse_hypr_json(&buf))
+    }
+
+    fn query_hyprctl() -> Option<(String, String)> {
+        let out = std::process::Command::new("hyprctl")
+            .args(["activewindow", "-j"])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        Some(parse_hypr_json(&String::from_utf8_lossy(&out.stdout)))
+    }
+}
+
+pub fn parse_hypr_json(s: &str) -> (String, String) {
+    let v: serde_json::Value = serde_json::from_str(s).unwrap_or(serde_json::Value::Null);
+    let app = v
+        .get("class")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string();
+    let title = v
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    (app, title)
+}
+
+impl WindowSource for HyprlandBackend {
+    fn active_window(&mut self) -> (String, String) {
+        self.query_socket()
+            .or_else(Self::query_hyprctl)
+            .unwrap_or_default()
     }
 }
 
@@ -313,5 +407,38 @@ mod tests {
         if KdeBackend::script_dir().is_none() {
             assert!(KdeBackend::new(new_active_cache()).is_none());
         }
+    }
+
+    #[test]
+    fn hypr_parses_class_and_title() {
+        assert_eq!(
+            parse_hypr_json(r#"{"class":"firefox","title":"Docs — Firefox"}"#),
+            ("firefox".to_string(), "Docs — Firefox".to_string())
+        );
+        assert_eq!(
+            parse_hypr_json(r#"{"title":"only"}"#),
+            (String::new(), "only".to_string())
+        );
+        assert_eq!(
+            parse_hypr_json("not json"),
+            (String::new(), String::new())
+        );
+    }
+
+    #[test]
+    fn hypr_socket_path_uses_runtime_dir_and_signature() {
+        let _guard = env_lock().lock().unwrap();
+        let _e = EnvGuard::set(&[
+            ("XDG_RUNTIME_DIR", Some("/run/user/1000")),
+            ("HYPRLAND_INSTANCE_SIGNATURE", Some("sig123")),
+        ]);
+        assert_eq!(
+            HyprlandBackend::socket_path(),
+            Some(std::path::PathBuf::from(
+                "/run/user/1000/hypr/sig123/.socket.sock"
+            ))
+        );
+        let _e2 = EnvGuard::set(&[("HYPRLAND_INSTANCE_SIGNATURE", None)]);
+        assert_eq!(HyprlandBackend::socket_path(), None);
     }
 }
