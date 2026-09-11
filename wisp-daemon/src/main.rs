@@ -1,4 +1,4 @@
-mod backends; mod dbus_api; mod logind; mod mpris; mod systemd;
+mod autostart; mod backends; mod dbus_api; mod logind; mod mpris; mod systemd;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
