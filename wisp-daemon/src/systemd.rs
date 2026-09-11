@@ -7,11 +7,10 @@ fn service_path() -> PathBuf {
 
 fn service_content() -> String {
     format!(
-        "[Unit]\nDescription=Wisp Activity Tracker\n\
-         After=graphical-session.target\nBindsTo=graphical-session.target\n\n\
+        "[Unit]\nDescription=Wisp Activity Tracker\nAfter=default.target\n\n\
          [Service]\nType=dbus\nBusName=com.saqr.wisp\n\
          ExecStart={}/wisp-daemon\nRestart=on-failure\nRestartSec=2\n\n\
-         [Install]\nWantedBy=graphical-session.target",
+         [Install]\nWantedBy=default.target",
         std::env::current_exe().unwrap_or_default().parent().unwrap_or(&PathBuf::from(".")).display()
     )
 }
@@ -36,5 +35,19 @@ pub fn install() {
             .args(["--user", "enable", "wisp.service"])
             .output()
             .ok();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_unit_targets_default_target() {
+        let content = service_content();
+        assert!(content.contains("After=default.target"));
+        assert!(content.contains("WantedBy=default.target"));
+        assert!(!content.contains("graphical-session"));
+        assert!(!content.contains("BindsTo"));
     }
 }

@@ -1,7 +1,6 @@
 [Unit]
 Description=Wisp Activity Tracker
-After=graphical-session.target
-BindsTo=graphical-session.target
+After=default.target
 
 [Service]
 Type=dbus
@@ -11,4 +10,4 @@ Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=default.target
