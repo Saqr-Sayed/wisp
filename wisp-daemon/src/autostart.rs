@@ -8,7 +8,7 @@ pub fn autostart_path() -> PathBuf {
 
 pub fn desktop_content(exe: &str) -> String {
     format!(
-        "[Desktop Entry]\nType=Application\nName=Wisp\nExec={exe}\nHidden=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n"
+        "[Desktop Entry]\nType=Application\nName=Wisp\nExec={exe}\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n"
     )
 }
 
@@ -57,7 +57,7 @@ mod tests {
         let out = desktop_content("/home/u/.local/bin/wisp-daemon");
         assert_eq!(
             out,
-            "[Desktop Entry]\nType=Application\nName=Wisp\nExec=/home/u/.local/bin/wisp-daemon\nHidden=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n"
+            "[Desktop Entry]\nType=Application\nName=Wisp\nExec=/home/u/.local/bin/wisp-daemon\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n"
         );
         assert!(!out.contains("OnlyShowIn"));
     }
