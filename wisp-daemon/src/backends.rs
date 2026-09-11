@@ -112,6 +112,8 @@ pub enum AnyBackend {
     Kde(KdeBackend),
     Hyprland(HyprlandBackend),
     Sway(SwayBackend),
+    Cosmic(CosmicBackend),
+    X11(X11Backend),
     Idle,
 }
 
@@ -122,6 +124,8 @@ impl WindowSource for AnyBackend {
             AnyBackend::Kde(b) => b.active_window(),
             AnyBackend::Hyprland(b) => b.active_window(),
             AnyBackend::Sway(b) => b.active_window(),
+            AnyBackend::Cosmic(b) => b.active_window(),
+            AnyBackend::X11(b) => b.active_window(),
             AnyBackend::Idle => (String::new(), String::new()),
         }
     }
@@ -348,6 +352,192 @@ impl WindowSource for SwayBackend {
     }
 }
 
+use x11rb::connection::Connection as _;
+use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+use x11rb::rust_connection::RustConnection;
+
+/// X11: `_NET_ACTIVE_WINDOW` on root → `_NET_WM_NAME` (fallback `WM_NAME`) +
+/// `WM_CLASS` of the active window. `DISPLAY` unset/unreachable ⇒ probe fails.
+/// Covers XFCE, Cinnamon, MATE, and Plasma/X11 sessions with no extra code.
+/// Never blocks: local X socket only; any error ⇒ ("","") for that poll.
+pub struct X11Backend {
+    conn: RustConnection,
+    root: u32,
+}
+
+impl X11Backend {
+    pub fn new() -> Option<Self> {
+        if std::env::var("DISPLAY")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .is_none()
+        {
+            return None;
+        }
+        let (conn, screen) = x11rb::connect(None).ok()?;
+        let root = conn.setup().roots.get(screen)?.root;
+        Some(X11Backend { conn, root })
+    }
+
+    fn atom(&self, name: &[u8]) -> Option<u32> {
+        self.conn
+            .intern_atom(false, name)
+            .ok()?
+            .reply()
+            .ok()
+            .map(|r| r.atom)
+    }
+
+    fn active_id(&self) -> Option<u32> {
+        let a = self.atom(b"_NET_ACTIVE_WINDOW")?;
+        let reply = self
+            .conn
+            .get_property(false, self.root, a, AtomEnum::WINDOW, 0, 1)
+            .ok()?
+            .reply()
+            .ok()?;
+        let id = reply.value32()?.next();
+        id
+    }
+
+    fn text_prop(&self, win: u32, names: &[&[u8]]) -> String {
+        for n in names {
+            let Some(a) = self.atom(n) else { continue };
+            let Ok(cookie) =
+                self.conn
+                    .get_property(false, win, a, AtomEnum::ANY, 0, u32::MAX)
+            else {
+                continue;
+            };
+            let Ok(reply) = cookie.reply() else {
+                continue;
+            };
+            if reply.value.is_empty() {
+                continue;
+            }
+            let s = String::from_utf8_lossy(&reply.value)
+                .trim_matches('\0')
+                .to_string();
+            if !s.is_empty() {
+                return s;
+            }
+        }
+        String::new()
+    }
+
+    fn class_of(&self, win: u32) -> String {
+        // WM_CLASS is "instance\0class\0": prefer class, fall back to instance.
+        let raw = self.text_prop(win, &[b"WM_CLASS"]);
+        let mut parts = raw.split('\0');
+        let inst = parts.next().unwrap_or("");
+        let class = parts.next().unwrap_or("");
+        if !class.is_empty() {
+            class.to_string()
+        } else {
+            inst.to_string()
+        }
+    }
+}
+
+impl WindowSource for X11Backend {
+    fn active_window(&mut self) -> (String, String) {
+        let Some(win) = self.active_id() else {
+            return (String::new(), String::new());
+        };
+        if win == 0 {
+            return (String::new(), String::new());
+        }
+        let title = self.text_prop(win, &[b"_NET_WM_NAME", b"WM_NAME"]);
+        let app = self.class_of(win);
+        (app, title)
+    }
+}
+
+/// COSMIC native slot (`ext-foreign-toplevel-list-v1`, falling back to
+/// `wlr-foreign-toplevel`). No `wayland-client` dependency in this plan, and
+/// the toplevel protocols cannot be probed without it, so `new` returns `None`
+/// and COSMIC sessions fall through to X11/Idle per the spec. Upgrade path:
+/// add the protocol binding, store the toplevel snapshot here, and return
+/// `Some` when the compositor offers either protocol. Chain position and the
+/// `"COSMIC backend active"` log line in `pick_backend` stay as-is.
+pub struct CosmicBackend;
+
+impl CosmicBackend {
+    pub fn new() -> Option<Self> {
+        None
+    }
+}
+
+impl WindowSource for CosmicBackend {
+    fn active_window(&mut self) -> (String, String) {
+        (String::new(), String::new())
+    }
+}
+
+/// Candidate order: hinted backends first (in hint order), then the fixed
+/// chain gnome → kde → hyprland → sway → cosmic → x11 → idle, deduplicated.
+pub fn chain_order(hints: &[String]) -> Vec<&'static str> {
+    const CHAIN: &[&str] = &["gnome", "kde", "hyprland", "sway", "cosmic", "x11", "idle"];
+    fn hint_name(h: &str) -> Option<&'static str> {
+        match h {
+            h if h.contains("hyprland") => Some("hyprland"),
+            h if h == "sway" => Some("sway"),
+            h if h == "cosmic" => Some("cosmic"),
+            h if h == "kde" || h == "plasma" => Some("kde"),
+            h if h.contains("gnome") => Some("gnome"),
+            h if h == "xfce" || h == "x-cinnamon" || h == "cinnamon" || h == "mate" => {
+                Some("x11")
+            }
+            h if h == "x11" => Some("x11"),
+            _ => None,
+        }
+    }
+    let mut order: Vec<&'static str> = Vec::new();
+    for h in hints.iter().filter_map(|h| hint_name(h)) {
+        if !order.contains(&h) {
+            order.push(h);
+        }
+    }
+    for c in CHAIN {
+        if !order.contains(c) {
+            order.push(c);
+        }
+    }
+    order
+}
+
+/// Probe the hinted backend first, then the full chain; first `Some` wins.
+/// Each probe is soft (`None` on any failure, never panic) and the winner is
+/// logged. A hint only orders candidates — an unresponsive hinted backend
+/// falls through to the next probe.
+pub fn pick_backend(kde_cache: &ActiveCache) -> Option<AnyBackend> {
+    let hints = detect_desktop();
+    for name in chain_order(&hints) {
+        let found = match name {
+            "gnome" => GnomeBackend::new().map(AnyBackend::Gnome),
+            "kde" => KdeBackend::new(kde_cache.clone()).map(AnyBackend::Kde),
+            "hyprland" => HyprlandBackend::new().map(AnyBackend::Hyprland),
+            "sway" => SwayBackend::new().map(AnyBackend::Sway),
+            "cosmic" => CosmicBackend::new().map(AnyBackend::Cosmic),
+            "x11" => X11Backend::new().map(AnyBackend::X11),
+            _ => Some(AnyBackend::Idle),
+        };
+        if let Some(b) = found {
+            match &b {
+                AnyBackend::Gnome(_) => println!("GNOME Shell extension backend active"),
+                AnyBackend::Kde(_) => println!("KDE KWin script backend active"),
+                AnyBackend::Hyprland(_) => println!("Hyprland socket backend active"),
+                AnyBackend::Sway(_) => println!("Sway i3-ipc backend active"),
+                AnyBackend::Cosmic(_) => println!("COSMIC backend active"),
+                AnyBackend::X11(_) => println!("X11 backend active"),
+                AnyBackend::Idle => println!("no native backend found; idle backend active"),
+            }
+            return Some(b);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -563,5 +753,40 @@ mod tests {
         let tree: serde_json::Value =
             serde_json::from_str(r#"{"focused":false,"nodes":[]}"#).unwrap();
         assert_eq!(find_focused(&tree), None);
+    }
+
+    fn order_of(hints: &[&str]) -> Vec<&'static str> {
+        let owned: Vec<String> = hints.iter().map(|s| s.to_string()).collect();
+        chain_order(&owned)
+    }
+
+    #[test]
+    fn chain_orders_hint_first_then_full_chain() {
+        assert_eq!(
+            order_of(&["kde", "gnome"]),
+            vec!["kde", "gnome", "hyprland", "sway", "cosmic", "x11", "idle"]
+        );
+        assert_eq!(
+            order_of(&["hyprland"]),
+            vec!["hyprland", "gnome", "kde", "sway", "cosmic", "x11", "idle"]
+        );
+    }
+
+    #[test]
+    fn chain_maps_x11_desktops_to_x11() {
+        assert_eq!(
+            order_of(&["xfce"]),
+            vec!["x11", "gnome", "kde", "hyprland", "sway", "cosmic", "idle"]
+        );
+        assert_eq!(
+            order_of(&["x-cinnamon", "mate"]),
+            vec!["x11", "gnome", "kde", "hyprland", "sway", "cosmic", "idle"]
+        );
+    }
+
+    #[test]
+    fn chain_always_ends_with_idle() {
+        assert_eq!(*order_of(&[]).last().unwrap(), "idle");
+        assert!(pick_backend(&new_active_cache()).is_some());
     }
 }

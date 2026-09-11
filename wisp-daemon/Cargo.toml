@@ -7,6 +7,7 @@ edition = "2021"
 wisp-core = { path = "../wisp-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+x11rb = "0.13"
 zbus = "4"
 tokio = { version = "1", features = ["full"] }
 dirs = "5"
