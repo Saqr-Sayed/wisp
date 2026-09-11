@@ -111,6 +111,7 @@ pub enum AnyBackend {
     Gnome(GnomeBackend),
     Kde(KdeBackend),
     Hyprland(HyprlandBackend),
+    Sway(SwayBackend),
     Idle,
 }
 
@@ -120,6 +121,7 @@ impl WindowSource for AnyBackend {
             AnyBackend::Gnome(b) => b.active_window(),
             AnyBackend::Kde(b) => b.active_window(),
             AnyBackend::Hyprland(b) => b.active_window(),
+            AnyBackend::Sway(b) => b.active_window(),
             AnyBackend::Idle => (String::new(), String::new()),
         }
     }
@@ -257,6 +259,91 @@ impl WindowSource for HyprlandBackend {
     fn active_window(&mut self) -> (String, String) {
         self.query_socket()
             .or_else(Self::query_hyprctl)
+            .unwrap_or_default()
+    }
+}
+
+/// Sway: `$SWAYSOCK` i3-ipc frame `"i3-ipc"` + len u32 LE + type u32 LE
+/// (`4` = GET_TREE), empty payload; walks the JSON tree for the `focused`
+/// node. app = `app_id` else `window_properties.class` else "",
+/// title = `name` else "". Missing/unreachable `$SWAYSOCK` ⇒ probe fails.
+/// Never blocks: 300ms socket timeouts, any error ⇒ ("","") for that poll.
+pub struct SwayBackend {
+    sock: PathBuf,
+}
+
+impl SwayBackend {
+    pub fn new() -> Option<Self> {
+        let raw = std::env::var("SWAYSOCK").ok().filter(|s| !s.is_empty())?;
+        let path = PathBuf::from(&raw);
+        if !path.exists() {
+            return None;
+        }
+        UnixStream::connect(&path).ok()?;
+        Some(SwayBackend { sock: path })
+    }
+
+    fn request_tree(sock: &PathBuf) -> Option<serde_json::Value> {
+        let mut s = UnixStream::connect(sock).ok()?;
+        s.set_read_timeout(Some(Duration::from_millis(300))).ok()?;
+        s.set_write_timeout(Some(Duration::from_millis(300))).ok()?;
+        let mut frame = b"i3-ipc".to_vec();
+        frame.extend_from_slice(&0u32.to_le_bytes());
+        frame.extend_from_slice(&4u32.to_le_bytes());
+        s.write_all(&frame).ok()?;
+        let mut hdr = [0u8; 14];
+        s.read_exact(&mut hdr).ok()?;
+        if &hdr[..6] != b"i3-ipc" {
+            return None;
+        }
+        let len = u32::from_le_bytes(hdr[6..10].try_into().ok()?) as usize;
+        if len > 32 * 1024 * 1024 {
+            return None;
+        }
+        let mut payload = vec![0u8; len];
+        s.read_exact(&mut payload).ok()?;
+        serde_json::from_slice(&payload).ok()
+    }
+}
+
+/// Walk the i3 tree for the node with `"focused": true`.
+pub fn find_focused(v: &serde_json::Value) -> Option<(String, String)> {
+    let obj = v.as_object()?;
+    if obj.get("focused").and_then(|f| f.as_bool()) == Some(true) {
+        let app = obj
+            .get("app_id")
+            .and_then(|a| a.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                obj.get("window_properties")
+                    .and_then(|w| w.get("class"))
+                    .and_then(|c| c.as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default();
+        let title = obj
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_string();
+        return Some((app, title));
+    }
+    for key in ["nodes", "floating_nodes"] {
+        if let Some(arr) = obj.get(key).and_then(|n| n.as_array()) {
+            for child in arr {
+                if let Some(found) = find_focused(child) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
+}
+
+impl WindowSource for SwayBackend {
+    fn active_window(&mut self) -> (String, String) {
+        Self::request_tree(&self.sock)
+            .and_then(|t| find_focused(&t))
             .unwrap_or_default()
     }
 }
@@ -440,5 +527,41 @@ mod tests {
         );
         let _e2 = EnvGuard::set(&[("HYPRLAND_INSTANCE_SIGNATURE", None)]);
         assert_eq!(HyprlandBackend::socket_path(), None);
+    }
+
+    #[test]
+    fn sway_finds_wayland_focused_app_id() {
+        let tree: serde_json::Value = serde_json::from_str(
+            r#"{"focused":false,"nodes":[{"focused":false,"nodes":[
+                {"focused":true,"app_id":"org.mozilla.firefox","name":"Docs — Firefox","nodes":[]}
+            ]}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            find_focused(&tree),
+            Some((
+                "org.mozilla.firefox".to_string(),
+                "Docs — Firefox".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn sway_falls_back_to_xwayland_class() {
+        let tree: serde_json::Value = serde_json::from_str(
+            r#"{"focused":true,"window_properties":{"class":"Emacs"},"name":"*scratch*","nodes":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            find_focused(&tree),
+            Some(("Emacs".to_string(), "*scratch*".to_string()))
+        );
+    }
+
+    #[test]
+    fn sway_no_focused_node_is_none() {
+        let tree: serde_json::Value =
+            serde_json::from_str(r#"{"focused":false,"nodes":[]}"#).unwrap();
+        assert_eq!(find_focused(&tree), None);
     }
 }
