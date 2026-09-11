@@ -70,6 +70,10 @@ sudo dnf install ./wisp-v1-linux-x86_64.rpm
 sudo apt install ./wisp-v1-linux-x86_64.deb
 ```
 
+> **Note:** the tray icon needs `libayatana-appindicator3` at runtime
+> (Debian/Ubuntu: `libayatana-appindicator3-1`; Fedora: `libappindicator-gtk3`).
+> If the tray icon is missing, install that package and restart Wisp.
+
 Then install the **daemon** and the **GNOME Shell extension**:
 
 ```bash
