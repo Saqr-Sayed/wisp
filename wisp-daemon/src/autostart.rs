@@ -40,10 +40,6 @@ pub fn uninstall_autostart() -> std::io::Result<()> {
     uninstall_at(&autostart_path())
 }
 
-pub fn autostart_enabled() -> bool {
-    autostart_path().exists()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
