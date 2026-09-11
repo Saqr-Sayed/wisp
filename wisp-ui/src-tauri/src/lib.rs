@@ -194,6 +194,30 @@ mod commands {
     }
 
     #[tauri::command]
+    pub async fn get_autostart() -> Result<bool, String> {
+        Ok(super::daemon_autostart_path().exists())
+    }
+
+    #[tauri::command]
+    pub async fn set_autostart(enabled: bool) -> Result<(), String> {
+        let flag = if enabled { "--install" } else { "--uninstall" };
+        let output = std::process::Command::new(super::daemon_binary()?)
+            .arg(flag)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            if stderr.is_empty() {
+                Err(format!("wisp-daemon {flag} failed"))
+            } else {
+                Err(stderr)
+            }
+        }
+    }
+
+    #[tauri::command]
     pub async fn get_categories() -> Result<Vec<(i64, String, String, i64, i64, i64)>, String> {
         let reply = call("GetCategories", &()).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
@@ -284,6 +308,27 @@ mod commands {
         }
         Ok(())
     }
+}
+
+#[cfg(target_os = "linux")]
+fn daemon_binary() -> Result<std::path::PathBuf, String> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let next = dir.join("wisp-daemon");
+            if next.exists() {
+                return Ok(next);
+            }
+        }
+    }
+    // ponytail: PATH lookup — Command resolves bare names via PATH, covers /usr/bin + ~/.local/bin installs
+    Ok(std::path::PathBuf::from("wisp-daemon"))
+}
+
+#[cfg(target_os = "linux")]
+fn daemon_autostart_path() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".config/autostart/wisp.desktop")
 }
 
 #[cfg(target_os = "windows")]
@@ -533,6 +578,7 @@ mod commands {
 
     use commands::{
     add_category, add_category_member, archive_target, delete_category, delete_category_member,
+    get_autostart, set_autostart,
     get_categories, get_category_members, get_content, get_known_apps, get_known_sites, get_limits,
     get_name_overrides, get_report, get_series, get_series_overrides, get_setting, get_site_overrides, get_status,
     get_timeline, ignore_target, list_archived, list_ignored, log_frontend, notify, remove_limit, remove_name_override,
@@ -562,6 +608,30 @@ fn disable_pinch_zoom(app: &tauri::AppHandle) {
     });
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
+    use tauri::{menu::{Menu, MenuItem}, tray::TrayIconBuilder, Manager};
+    let show = MenuItem::with_id(app, "show", "إظهار", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "خروج", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let _tray = TrayIconBuilder::new()
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -574,7 +644,7 @@ pub fn run() {
             get_known_apps, get_known_sites,
             get_site_overrides, set_site_override, remove_site_override,
             get_series_overrides, set_series_override, remove_series_override,
-            get_setting, set_setting,
+            get_setting, set_setting, get_autostart, set_autostart,
             get_categories, get_category_members, get_content, add_category, rename_category,
             set_category_color, add_category_member, delete_category_member, delete_category,
             list_ignored, ignore_target, unignore_target,
@@ -584,6 +654,7 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     let builder = builder.setup(|app| {
         disable_pinch_zoom(app.handle());
+        setup_tray(app)?;
         Ok(())
     });
 
@@ -596,8 +667,7 @@ pub fn run() {
         use wisp_core::tracker::{run_tracker_loop, unix_now, SysEvents};
         use wisp_core::watcher::spawn_file_watcher;
         use std::sync::Arc;
-        use tauri::tray::TrayIconBuilder;
-        use tauri::{menu::{Menu, MenuItem}, Manager};
+        use tauri::Manager;
         builder
             .setup(|app| {
                 install_autostart();
@@ -624,24 +694,7 @@ pub fn run() {
                     run_tracker_loop(db, Win32Backend, &sys, &|app, title| media_hook(&media, app, title), |_, _, _| {});
                 });
 
-                let show = MenuItem::with_id(app, "show", "إظهار", true, None::<&str>)?;
-                let quit = MenuItem::with_id(app, "quit", "خروج", true, None::<&str>)?;
-                let menu = Menu::with_items(app, &[&show, &quit])?;
-                let _tray = TrayIconBuilder::new()
-                    .icon(app.default_window_icon().unwrap().clone())
-                    .menu(&menu)
-                    .show_menu_on_left_click(true)
-                    .on_menu_event(|app, event| match event.id.as_ref() {
-                        "show" => {
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            }
-                        }
-                        "quit" => app.exit(0),
-                        _ => {}
-                    })
-                    .build(app)?;
+                setup_tray(app)?;
 
                 Ok(())
             })

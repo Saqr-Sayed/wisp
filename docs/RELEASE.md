@@ -32,6 +32,14 @@ Every release ships the same asset names, keyed to the tag (`v1`, `v2`, …):
 | `wisp-<tag>-linux-x86_64.rpm` | `bundle/rpm/` (renamed) |
 | `wisp-<tag>-linux-x86_64-daemon.tar.gz` | `tar czf … -C target/release wisp-daemon -C packaging wisp.service` |
 | `wisp-<tag>-linux-x86_64-gnome-extension.zip` | CI `build-installers` (zip of `packaging/wisp@saqr`) |
+| `wisp-<tag>-linux-x86_64-kwin-wisp.zip` | zip of `packaging/kwin-wisp` (KDE KWin script) |
+
+Backends: GNOME via `wisp@saqr` extension, KDE/Plasma via `kwin-wisp`
+(push over D-Bus), Hyprland via socket with `hyprctl` fallback, Sway via
+i3-ipc (`$SWAYSOCK`), XFCE/Cinnamon/MATE via X11 (`x11rb`,
+`_NET_ACTIVE_WINDOW`), COSMIC falls back to idle. Probes run hint-ordered
+(`XDG_CURRENT_DESKTOP`/`DESKTOP_SESSION`, `HYPRLAND_INSTANCE_SIGNATURE`,
+`SWAYSOCK`) with hot-swap retry; Hyprland/Sway/X11 need no extra component.
 
 The CI workflow renames the Windows bundles automatically; rename the Linux
 outputs locally before `gh release upload`.
@@ -50,28 +58,36 @@ Note: AppImage bundling is disabled in `tauri.conf.json` (`targets: ["deb","rpm"
    (copy from the .deb payload).
 3. Tracker service (systemd user unit, start the daemon at login):
    `~/.config/systemd/user/wisp.service`:
-   ```ini
-   [Unit]
-   Description=Wisp Activity Tracker
-   After=graphical-session.target
-   BindsTo=graphical-session.target
+    ```ini
+    [Unit]
+    Description=Wisp Activity Tracker
+    After=default.target
 
-   [Service]
-   Type=dbus
-   BusName=com.saqr.wisp
-   ExecStart=/home/<user>/.local/bin/wisp-daemon
-   Restart=on-failure
-   RestartSec=2
+    [Service]
+    Type=dbus
+    BusName=com.saqr.wisp
+    ExecStart=/home/<user>/.local/bin/wisp-daemon
+    Restart=on-failure
+    RestartSec=2
 
-   [Install]
-   WantedBy=graphical-session.target
-   ```
+    [Install]
+    WantedBy=default.target
+    ```
    ```sh
    systemctl --user daemon-reload && systemctl --user enable --now wisp
    ```
-4. GNOME Shell extension `wisp@saqr` must be installed for window tracking:
-   `~/.local/share/gnome-shell/extensions/wisp@saqr/` (enable via
-   `gnome-extensions enable wisp@saqr`).
+4. Window-tracking backend for your DE:
+   - GNOME: `~/.local/share/gnome-shell/extensions/wisp@saqr/` (enable via
+     `gnome-extensions enable wisp@saqr`).
+   - KDE/Plasma: `~/.local/share/kwin/scripts/kwin-wisp/` (from the
+     `kwin-wisp.zip` asset or `packaging/kwin-wisp`), then
+     `kpackagetool6 --type=KWin/Script -i ~/.local/share/kwin/scripts/kwin-wisp`
+     and reconfigure KWin (`qdbus6 org.kde.KWin /KWin reconfigure`).
+   - Hyprland/Sway/X11: no extra component (daemon uses native sockets/X11
+     directly; needs `x11rb` at build time only).
+   Autostart (optional, also via the Settings tray toggle):
+   `wisp-daemon --install` writes `~/.config/autostart/wisp.desktop`
+   (`--uninstall` removes it).
 
 Data: `~/.local/share/wisp/activity.db`.
 

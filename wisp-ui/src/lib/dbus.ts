@@ -168,3 +168,5 @@ export async function unignoreTarget(kind: 'app' | 'site', target: string) { ret
 export async function archiveTarget(kind: 'app' | 'site', target: string) { return invoke('archive_target', { kind, target }) }
 export async function unarchiveTarget(kind: 'app' | 'site', target: string) { return invoke('unarchive_target', { kind, target }) }
 export async function getArchived(): Promise<[string, string][]> { return invoke('list_archived') }
+export async function getAutostart(): Promise<boolean> { return invoke('get_autostart') }
+export async function setAutostart(enabled: boolean): Promise<void> { return invoke('set_autostart', { enabled }) }

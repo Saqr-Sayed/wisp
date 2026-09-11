@@ -2,6 +2,14 @@
 
 All notable changes to Wisp, per release (tags `v1`, `v2`, …).
 
+## Unreleased
+
+- Linux multi-DE backends: GNOME extension, KDE KWin script (`packaging/kwin-wisp`, push over D-Bus), Hyprland socket with `hyprctl` fallback, Sway i3-ipc, X11 `_NET_ACTIVE_WINDOW` (covers XFCE/Cinnamon/MATE), COSMIC fallback to idle; hint-ordered chain with hot-swap retry
+- Autostart `~/.config/autostart/wisp.desktop` via `wisp-daemon --install` / `--uninstall`, wired to the Settings toggle
+- Shared tray setup for Linux and Windows (AppIndicator + autostart `.desktop` note)
+- `wisp.service` loosened to `default.target` (was `graphical-session.target`) for all DEs
+- New `x11rb` dependency for the X11 backend
+
 ## v1 — 2026-08-15
 
 First stable release.

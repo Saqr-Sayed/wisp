@@ -9,6 +9,7 @@ import {
   archiveTarget, unarchiveTarget, getArchived,
   getCategories, getCategoryMembers, addCategory, renameCategory, setCategoryColor,
   addCategoryMember, deleteCategoryMember, deleteCategory, setCategoryCache,
+  getAutostart, setAutostart,
   type LogEntry, type KnownApp, type KnownSite, type CategoryInfo,
 } from '../lib/dbus'
 import { currentMode, setMode, type ThemeMode } from '../lib/theme'
@@ -24,12 +25,28 @@ const lang = ref<'auto' | 'ar' | 'en'>('auto')
 onMounted(async () => {
   const v = await getSetting('language').catch(() => 'auto')
   if (v === 'ar' || v === 'en' || v === 'auto') lang.value = v
-  await Promise.all([refreshKnown(), refreshIgnored(), refreshCategories(), refreshArchived()])
+  await Promise.all([refreshKnown(), refreshIgnored(), refreshCategories(), refreshArchived(), refreshAutostart()])
 })
 async function setLang(v: 'auto' | 'ar' | 'en') {
   lang.value = v
   await setSetting('language', v)
   setLocale(v)
+}
+
+const autostart = ref(false)
+const showAutostart = ref(false)
+async function refreshAutostart() {
+  try {
+    autostart.value = await getAutostart()
+    showAutostart.value = true
+  } catch {
+    showAutostart.value = false // non-Linux: command missing, hide the toggle
+  }
+}
+async function toggleAutostart() {
+  const next = !autostart.value
+  await setAutostart(next)
+  autostart.value = next
 }
 
 const usedMap = computed(() => {
@@ -234,6 +251,13 @@ async function setSiteLimit(x: KnownSite) {
               <button class="pill" :class="{ on: theme === 'light' }" @click="toggleTheme('light')">{{ t('settings.theme.light') }}</button>
               <button class="pill" :class="{ on: theme === 'dark' }" @click="toggleTheme('dark')">{{ t('settings.theme.dark') }}</button>
             </div>
+          </div>
+          <div v-if="showAutostart">
+            <h4>{{ t('settings.autostart.label') }}</h4>
+            <div class="theme-toggle">
+              <button class="pill" :class="{ on: autostart }" @click="toggleAutostart">{{ autostart ? t('settings.autostart.on') : t('settings.autostart.off') }}</button>
+            </div>
+            <p class="hint">{{ t('settings.autostart.hint') }}</p>
           </div>
         </div>
       </section>
