@@ -1,34 +1,13 @@
-mod backends; mod dbus_api; mod gnome; mod logind; mod mpris; mod systemd;
+mod backends; mod dbus_api; mod logind; mod mpris; mod systemd;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use wisp_core::db::Db;
-use wisp_core::tracker::{run_tracker_loop, unix_now, SysEvents, WindowSource};
+use wisp_core::tracker::{run_tracker_loop, unix_now, SysEvents};
 use wisp_core::watcher::spawn_file_watcher;
-use gnome::GnomeBackend;
-
-fn pick_backend() -> Option<impl WindowSource> {
-    if let Some(g) = GnomeBackend::new() {
-        println!("GNOME Shell extension backend active");
-        return Some(g);
-    }
-    None
-}
-
-/// The daemon starts at login before gnome-shell finishes loading extensions,
-/// so retry until the Wisp extension owns its bus name.
-fn wait_for_backend() -> impl WindowSource {
-    loop {
-        if let Some(b) = pick_backend() {
-            return b;
-        }
-        println!("waiting for the GNOME Shell extension...");
-        std::thread::sleep(Duration::from_secs(5));
-    }
-}
+use backends::wait_for_backend;
 
 /// System boot time in unix seconds, from /proc/stat. 0 on any failure.
 fn boot_time() -> i64 {
@@ -78,13 +57,13 @@ async fn main() {
 
     watch_files(db.clone());
 
-    let (_conn, tracker, _kde_cache) = dbus_api::serve(db.clone()).await.unwrap();
+    let (_conn, tracker, kde_cache) = dbus_api::serve(db.clone()).await.unwrap();
 
     let handle = tokio::runtime::Handle::current();
     let db2 = db.clone();
     let sys2 = sys.clone();
     std::thread::spawn(move || {
-        let backend = wait_for_backend();
+        let backend = wait_for_backend(kde_cache);
         run_tracker_loop(db2, backend, &sys2, &|app, _| mpris::probe(app), move |app, title, now| {
             let handle = handle.clone();
             let app = app.to_string();

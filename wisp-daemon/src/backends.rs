@@ -789,4 +789,85 @@ mod tests {
         assert_eq!(*order_of(&[]).last().unwrap(), "idle");
         assert!(pick_backend(&new_active_cache()).is_some());
     }
+
+    #[test]
+    fn hot_backend_delegates_to_inner() {
+        let hot = HotBackend::new(AnyBackend::Idle);
+        let mut polled = hot.clone();
+        assert_eq!(polled.active_window(), (String::new(), String::new()));
+    }
+
+    #[test]
+    fn wait_for_backend_returns_promptly_without_a_de() {
+        let _guard = env_lock().lock().unwrap();
+        let _e = EnvGuard::set(&[
+            ("XDG_CURRENT_DESKTOP", Some("UNKNOWN-DE-XYZ")),
+            ("DESKTOP_SESSION", Some("unknown-de-xyz")),
+            ("HYPRLAND_INSTANCE_SIGNATURE", None),
+            ("SWAYSOCK", None),
+            ("WAYLAND_DISPLAY", None),
+            ("DISPLAY", None),
+        ]);
+        let start = std::time::Instant::now();
+        let mut hot = wait_for_backend(new_active_cache());
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "wait_for_backend must not block the tracker"
+        );
+        let _ = hot.active_window();
+    }
+}
+
+/// Swappable handle that IS the `WindowSource`: the tracker loop keeps polling
+/// this at 1s while the retry thread hot-swaps the inner backend.
+#[derive(Clone)]
+pub struct HotBackend {
+    current: Arc<Mutex<AnyBackend>>,
+}
+
+impl HotBackend {
+    pub fn new(initial: AnyBackend) -> Self {
+        HotBackend {
+            current: Arc::new(Mutex::new(initial)),
+        }
+    }
+}
+
+impl WindowSource for HotBackend {
+    fn active_window(&mut self) -> (String, String) {
+        self.current
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .active_window()
+    }
+}
+
+/// Try `pick_backend()` once. On success return `HotBackend` wrapping it; on
+/// total failure return `HotBackend` wrapping `Idle` so MPRIS, logind, the file
+/// watcher, and the D-Bus API keep running. When the first pick is `Idle`, a
+/// background thread retries `pick_backend()` every 5s and hot-swaps the inner
+/// backend on the first non-Idle success (logs the swap). This replaces the
+/// old block-forever GNOME loop, which would stall all tracking on DEs
+/// without the GNOME extension.
+pub fn wait_for_backend(kde_cache: ActiveCache) -> HotBackend {
+    let initial = pick_backend(&kde_cache).unwrap_or(AnyBackend::Idle);
+    let hot = HotBackend::new(initial);
+    let is_idle = matches!(
+        *hot.current.lock().unwrap_or_else(|e| e.into_inner()),
+        AnyBackend::Idle
+    );
+    if is_idle {
+        let current = hot.current.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(5));
+            if let Some(b) = pick_backend(&kde_cache) {
+                if !matches!(b, AnyBackend::Idle) {
+                    *current.lock().unwrap_or_else(|e| e.into_inner()) = b;
+                    println!("backend hot-swapped after retry");
+                    break;
+                }
+            }
+        });
+    }
+    hot
 }
