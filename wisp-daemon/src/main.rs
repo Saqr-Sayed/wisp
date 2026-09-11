@@ -32,9 +32,41 @@ fn watch_files(db: Arc<Db>) {
     spawn_file_watcher(db, dirs);
 }
 
+/// Handles `wisp-daemon --install` / `--uninstall` (autostart .desktop entry).
+/// Returns true when a flag was consumed and the daemon must exit.
+fn handle_install_flags() -> bool {
+    let flag = std::env::args().nth(1);
+    match flag.as_deref() {
+        Some("--install") => {
+            match autostart::install_autostart() {
+                Ok(()) => println!("autostart installed"),
+                Err(e) => {
+                    eprintln!("autostart install failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+            true
+        }
+        Some("--uninstall") => {
+            match autostart::uninstall_autostart() {
+                Ok(()) => println!("autostart removed"),
+                Err(e) => {
+                    eprintln!("autostart uninstall failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
 #[tokio::main]
 async fn main() {
     println!("Wisp daemon starting...");
+    if handle_install_flags() {
+        return;
+    }
     systemd::install();
 
     let db = Arc::new(Db::new());
