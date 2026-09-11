@@ -86,6 +86,21 @@ impl GnomeBackend {
         if !owned {
             return None;
         }
+        // serve() claims DEST itself for PushActive, so NameHasOwner is also
+        // true when only WE own the name. Require the owner to serve
+        // GetActive, else fall through to the next backend in the chain.
+        let ok = conn
+            .call_method(
+                Some(zbus::names::BusName::from_static_str(DEST).unwrap()),
+                PATH,
+                Some(zbus::names::InterfaceName::from_static_str(IFACE).unwrap()),
+                "GetActive",
+                &(),
+            )
+            .is_ok();
+        if !ok {
+            return None;
+        }
         Some(GnomeBackend { conn })
     }
 }
