@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.saqr.wisp</id>
+  <name>Wisp</name>
+  <summary>Private local screen-time tracker</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>Wisp is a private, offline-first screen-time tracker. All data stays on this machine.</p>
+  </description>
+  <launchable type="desktop-id">com.saqr.wisp.desktop</launchable>
+  <icon type="cached" width="128" height="128">com.saqr.wisp</icon>
+</component>
