@@ -9,5 +9,8 @@
     <p>Wisp is a private, offline-first screen-time tracker. All data stays on this machine.</p>
   </description>
   <launchable type="desktop-id">com.saqr.wisp.desktop</launchable>
-  <icon type="cached" width="128" height="128">com.saqr.wisp</icon>
+  <icon type="stock" width="128" height="128">com.saqr.wisp</icon>
+  <categories>
+    <category>Utility</category>
+  </categories>
 </component>
