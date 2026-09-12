@@ -186,7 +186,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   <div id="shell" class="rtl">
     <header class="hdr">
       <div class="brand">
-        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><defs><linearGradient id="ring-g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e13057"/><stop offset="0.4" stop-color="#e13057"/><stop offset="0.68" stop-color="#ff9db8"/><stop offset="1" stop-color="#ff9db8" stop-opacity="0"/></linearGradient><linearGradient id="wisp-g" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#e94560"/><stop offset="0.55" stop-color="#ff7ba3"/><stop offset="1" stop-color="#ffc7da"/></linearGradient></defs><circle cx="10.5" cy="12" r="6.5" fill="none" stroke="url(#ring-g)" stroke-width="2.4"/><g fill="none" stroke="url(#wisp-g)" stroke-linecap="round"><path d="M16.3 11.2 C18.2 9.5 19.6 7.7 22.2 5.5" stroke-width="1.7"/><path d="M14.9 8.7 C16.6 7.2 18.5 5.7 20.6 3.5" stroke-width="1.1"/><path d="M12.7 6.8 C14 5.6 15.6 4.5 17.2 3.4" stroke-width="0.7"/></g><path d="M10.5 12 L13.6 9.9" stroke="#e13057" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="12" r="1.3" fill="#e13057"/></svg>
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="3" y="4" width="12" height="10" rx="2" fill="currentColor" opacity="0.55"/><rect x="9" y="10" width="12" height="10" rx="2" fill="#7C53C7"/><circle cx="15" cy="15" r="2.5" fill="#FFFFFF"/></svg>
         <span class="brand-name">{{ t('app.brand') }}</span>
       </div>
 
