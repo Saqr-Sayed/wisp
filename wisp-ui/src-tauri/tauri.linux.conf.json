@@ -1,0 +1,9 @@
+{
+  "productName": "com.saqr.wisp",
+  "bundle": {
+    "linux": {
+      "deb": { "desktopTemplate": "icons/com.saqr.wisp.desktop" },
+      "rpm": { "desktopTemplate": "icons/com.saqr.wisp.desktop" }
+    }
+  }
+}

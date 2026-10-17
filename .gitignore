@@ -7,4 +7,5 @@ wisp-ui/src-tauri/gen/
 .superpowers/
 .impeccable/
 .xwin-cache/
+.worktrees/
 docs/superpowers/
